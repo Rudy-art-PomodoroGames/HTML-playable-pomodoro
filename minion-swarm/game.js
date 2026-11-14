@@ -37,14 +37,29 @@ const CONFIG = {
   },
 
   guide: {
-    speed: 100,             // how fast the swarm heads to a tapped point
-    linger: 0.4,            // seconds the swarm keeps the tapped direction after release
-    showMarker: true,       // draw a ring where the player taps
+    speed: 120,             // how fast the swarm heads to a tapped point
+    showMarker: true,       // draw a ring where the player tapped
   },
 
   shake: {
     duration: 0.15,         // seconds a resource shakes after a hit
     amount: 2.5,            // shake strength in pixels
+  },
+
+  hpText: {
+    show: true,
+    smallFontSize: 11,
+    bigFontSize: 16,
+    color: '#ffffff',
+  },
+
+  damagePopup: {
+    show: true,
+    duration: 0.7,          // seconds until fully faded
+    rise: 18,               // pixels the number floats up
+    popScale: 1.6,          // starting size, shrinks to 1 right away
+    fontSize: 13,
+    color: '#ffe066',
   },
 
   clearDelay: 1.2,          // seconds between zones
@@ -64,7 +79,8 @@ const state = {
   minions: [],
   resources: [],
   leader: { x: W / 2, y: H - 90, target: null },
-  guide: null,              // { x, y, held, linger } while the player steers
+  guide: null,              // { x, y } tapped point the swarm is heading to
+  popups: [],               // floating damage numbers
   paused: false,
   clearing: 0,
   flash: '',
@@ -160,7 +176,13 @@ function updateMinion(m, dt, attackers) {
   const t = m.type;
   const L = state.leader;
 
-  if (!m.target || !inSwarmRange(m.target)) {
+  // While heading to a tapped point, ignore resources on the way.
+  if (state.guide && m.target) {
+    attackers.set(m.target, (attackers.get(m.target) || 1) - 1);
+    m.target = null;
+  }
+
+  if (!state.guide && (!m.target || !inSwarmRange(m.target))) {
     if (m.target) attackers.set(m.target, (attackers.get(m.target) || 1) - 1);
     m.target = pickTarget(m, attackers);
     if (m.target) attackers.set(m.target, (attackers.get(m.target) || 0) + 1);
@@ -198,6 +220,10 @@ function updateMinion(m, dt, attackers) {
       m.cd = t.interval;
       m.target.hp -= t.dmg;
       m.target.shake = CONFIG.shake.duration;
+      if (CONFIG.damagePopup.show) {
+        const c = closestPoint(m.target, m.x, m.y); // where the minion touches it
+        state.popups.push({ x: c.x, y: c.y, text: String(t.dmg), age: 0 });
+      }
     }
   }
 }
@@ -261,25 +287,23 @@ function resolveCollisions() {
 function updateLeader(dt) {
   const L = state.leader;
 
-  // Player tap overrides the automatic behavior while held (plus a short linger).
+  // A tap overrides everything: go straight to the tapped point. On arrival,
+  // harvest the tapped resource, or the closest one if the tap hit empty ground.
   const g = state.guide;
   if (g) {
-    if (!g.held) {
-      g.linger -= dt;
-      if (g.linger <= 0) {
-        state.guide = null;
-        L.target = null; // pick the nearest resource from the new spot
-        return;
-      }
-    }
     const dx = g.x - L.x;
     const dy = g.y - L.y;
     const d = Math.hypot(dx, dy);
-    if (d > 2) {
-      const step = Math.min(CONFIG.guide.speed * dt, d);
+    const step = CONFIG.guide.speed * dt;
+    if (d > step) {
       L.x += (dx / d) * step;
       L.y += (dy / d) * step;
+      return;
     }
+    L.x = g.x;
+    L.y = g.y;
+    state.guide = null;
+    L.target = state.resources.find((r) => !r.done && distToRect(r, g.x, g.y) === 0) || null;
     return;
   }
 
@@ -321,6 +345,8 @@ function update(dt) {
   if (state.paused) return;
   if (state.flashT > 0) state.flashT -= dt;
   for (const r of state.resources) if (r.shake > 0) r.shake -= dt;
+  for (const p of state.popups) p.age += dt;
+  state.popups = state.popups.filter((p) => p.age < CONFIG.damagePopup.duration);
 
   if (state.clearing > 0) {
     state.clearing -= dt;
@@ -388,6 +414,7 @@ function restart() {
   state.clearing = 0;
   state.flashT = 0;
   state.guide = null;
+  state.popups = [];
   state.leader.x = W / 2;
   state.leader.y = H - 90;
   state.minions = [];
@@ -405,22 +432,12 @@ function toCanvas(e) {
   };
 }
 
+// Tap only: each tap replaces any previous move. Holding or dragging does nothing extra.
 canvas.addEventListener('pointerdown', (e) => {
   e.preventDefault();
-  if (canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
-  state.guide = { ...toCanvas(e), held: true, linger: CONFIG.guide.linger };
+  state.guide = toCanvas(e);
+  state.leader.target = null;
 });
-canvas.addEventListener('pointermove', (e) => {
-  if (state.guide && state.guide.held) Object.assign(state.guide, toCanvas(e));
-});
-const releaseGuide = () => {
-  if (state.guide) {
-    state.guide.held = false;
-    state.guide.linger = CONFIG.guide.linger;
-  }
-};
-canvas.addEventListener('pointerup', releaseGuide);
-canvas.addEventListener('pointercancel', releaseGuide);
 
 // ---- Render ----------------------------------------------------------------
 
@@ -449,10 +466,41 @@ function draw() {
       ctx.fillStyle = '#f5e663';
       ctx.fillRect(r.x - h, r.y - h - 7, r.size * Math.max(r.hp, 0) / r.maxHp, 4);
     }
+    if (CONFIG.hpText.show) {
+      // Drawn at the shaken position so the number shakes with the resource.
+      const size = r.big ? CONFIG.hpText.bigFontSize : CONFIG.hpText.smallFontSize;
+      ctx.font = `bold ${size}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+      ctx.strokeText(String(Math.max(0, Math.ceil(r.hp))), x, y + 1);
+      ctx.fillStyle = CONFIG.hpText.color;
+      ctx.fillText(String(Math.max(0, Math.ceil(r.hp))), x, y + 1);
+      ctx.textBaseline = 'alphabetic';
+    }
   }
 
+  // Damage numbers: pop in big, shrink to normal, float up, fade to zero.
+  const pc = CONFIG.damagePopup;
+  for (const p of state.popups) {
+    const k = Math.min(1, p.age / pc.duration);
+    const pop = 1 + (pc.popScale - 1) * Math.max(0, 1 - p.age / 0.12);
+    ctx.globalAlpha = 1 - k;
+    ctx.font = `bold ${Math.round(pc.fontSize * pop)}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.strokeText(p.text, p.x, p.y - pc.rise * k);
+    ctx.fillStyle = pc.color;
+    ctx.fillText(p.text, p.x, p.y - pc.rise * k);
+  }
+  ctx.globalAlpha = 1;
+  ctx.textBaseline = 'alphabetic';
+
   if (state.guide && CONFIG.guide.showMarker) {
-    ctx.globalAlpha = state.guide.held ? 0.8 : 0.4;
+    ctx.globalAlpha = 0.7;
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 2;
     ctx.beginPath();
