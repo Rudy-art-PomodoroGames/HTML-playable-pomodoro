@@ -36,6 +36,17 @@ const CONFIG = {
     smallColor: '#b5552f', bigColor: '#7d2a1c',
   },
 
+  guide: {
+    speed: 100,             // how fast the swarm heads to a tapped point
+    linger: 0.4,            // seconds the swarm keeps the tapped direction after release
+    showMarker: true,       // draw a ring where the player taps
+  },
+
+  shake: {
+    duration: 0.15,         // seconds a resource shakes after a hit
+    amount: 2.5,            // shake strength in pixels
+  },
+
   clearDelay: 1.2,          // seconds between zones
   showLeader: false,        // debug: draw the invisible leader
 };
@@ -53,6 +64,8 @@ const state = {
   minions: [],
   resources: [],
   leader: { x: W / 2, y: H - 90, target: null },
+  guide: null,              // { x, y, held, linger } while the player steers
+  paused: false,
   clearing: 0,
   flash: '',
   flashT: 0,
@@ -100,6 +113,7 @@ function makeZone(index) {
       x, y, size, big, maxHp, hp: maxHp,
       value: big ? z.bigValue + index * z.bigValuePerZone : z.smallValue + index * z.smallValuePerZone,
       done: false,
+      shake: 0,
     });
   }
   return list;
@@ -183,6 +197,7 @@ function updateMinion(m, dt, attackers) {
     if (m.cd <= 0) {
       m.cd = t.interval;
       m.target.hp -= t.dmg;
+      m.target.shake = CONFIG.shake.duration;
     }
   }
 }
@@ -245,6 +260,29 @@ function resolveCollisions() {
 
 function updateLeader(dt) {
   const L = state.leader;
+
+  // Player tap overrides the automatic behavior while held (plus a short linger).
+  const g = state.guide;
+  if (g) {
+    if (!g.held) {
+      g.linger -= dt;
+      if (g.linger <= 0) {
+        state.guide = null;
+        L.target = null; // pick the nearest resource from the new spot
+        return;
+      }
+    }
+    const dx = g.x - L.x;
+    const dy = g.y - L.y;
+    const d = Math.hypot(dx, dy);
+    if (d > 2) {
+      const step = Math.min(CONFIG.guide.speed * dt, d);
+      L.x += (dx / d) * step;
+      L.y += (dy / d) * step;
+    }
+    return;
+  }
+
   if (!L.target || L.target.done) {
     let best = null;
     let bestD = Infinity;
@@ -280,7 +318,9 @@ function updateLeader(dt) {
 // ---- Update ----------------------------------------------------------------
 
 function update(dt) {
+  if (state.paused) return;
   if (state.flashT > 0) state.flashT -= dt;
+  for (const r of state.resources) if (r.shake > 0) r.shake -= dt;
 
   if (state.clearing > 0) {
     state.clearing -= dt;
@@ -342,6 +382,46 @@ function merge() {
 document.getElementById('hire').addEventListener('click', hire);
 document.getElementById('merge').addEventListener('click', merge);
 
+function restart() {
+  state.wood = 0;
+  state.zone = 0;
+  state.clearing = 0;
+  state.flashT = 0;
+  state.guide = null;
+  state.leader.x = W / 2;
+  state.leader.y = H - 90;
+  state.minions = [];
+  for (let i = 0; i < CONFIG.startMinions; i++) state.minions.push(spawnNearLeader(CONFIG.small));
+  startZone();
+}
+
+// ---- Tap to guide ----------------------------------------------------------
+
+function toCanvas(e) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: Math.max(0, Math.min(W, ((e.clientX - rect.left) * W) / rect.width)),
+    y: Math.max(0, Math.min(H, ((e.clientY - rect.top) * H) / rect.height)),
+  };
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  if (canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
+  state.guide = { ...toCanvas(e), held: true, linger: CONFIG.guide.linger };
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (state.guide && state.guide.held) Object.assign(state.guide, toCanvas(e));
+});
+const releaseGuide = () => {
+  if (state.guide) {
+    state.guide.held = false;
+    state.guide.linger = CONFIG.guide.linger;
+  }
+};
+canvas.addEventListener('pointerup', releaseGuide);
+canvas.addEventListener('pointercancel', releaseGuide);
+
 // ---- Render ----------------------------------------------------------------
 
 function draw() {
@@ -350,17 +430,35 @@ function draw() {
 
   for (const r of state.resources) {
     const h = r.size / 2;
+    let sx = 0, sy = 0;
+    if (r.shake > 0 && CONFIG.shake.duration > 0) {
+      const k = Math.min(1, r.shake / CONFIG.shake.duration) * CONFIG.shake.amount;
+      sx = (Math.random() * 2 - 1) * k;
+      sy = (Math.random() * 2 - 1) * k;
+    }
+    const x = r.x + sx;
+    const y = r.y + sy;
     ctx.fillStyle = r.big ? CONFIG.zone.bigColor : CONFIG.zone.smallColor;
-    ctx.fillRect(r.x - h, r.y - h, r.size, r.size);
+    ctx.fillRect(x - h, y - h, r.size, r.size);
     ctx.strokeStyle = 'rgba(0,0,0,0.4)';
     ctx.lineWidth = 2;
-    ctx.strokeRect(r.x - h, r.y - h, r.size, r.size);
+    ctx.strokeRect(x - h, y - h, r.size, r.size);
     if (r.hp < r.maxHp) {
       ctx.fillStyle = 'rgba(0,0,0,0.5)';
       ctx.fillRect(r.x - h, r.y - h - 7, r.size, 4);
       ctx.fillStyle = '#f5e663';
       ctx.fillRect(r.x - h, r.y - h - 7, r.size * Math.max(r.hp, 0) / r.maxHp, 4);
     }
+  }
+
+  if (state.guide && CONFIG.guide.showMarker) {
+    ctx.globalAlpha = state.guide.held ? 0.8 : 0.4;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(state.guide.x, state.guide.y, 14, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
   }
 
   for (const m of state.minions) {
@@ -383,8 +481,8 @@ function draw() {
   ctx.fillStyle = '#e8f5ea';
   ctx.font = 'bold 16px system-ui, sans-serif';
   ctx.textAlign = 'left';
-  ctx.fillText(`Zone ${state.zone + 1}`, 12, 24);
-  ctx.fillText(`Wood ${Math.floor(state.wood)}`, 12, 46);
+  ctx.fillText(`Zone ${state.zone + 1}`, 54, 24); // leaves room for the ⚙ button
+  ctx.fillText(`Wood ${Math.floor(state.wood)}`, 54, 46);
   ctx.textAlign = 'right';
   ctx.fillText(`Minions ${state.minions.length}`, W - 12, 24);
 
@@ -421,8 +519,18 @@ function frame() {
   requestAnimationFrame(frame);
 }
 
-for (let i = 0; i < CONFIG.startMinions; i++) state.minions.push(spawnNearLeader(CONFIG.small));
-startZone();
+// Load saved settings before the first spawn so start values apply.
+if (window.SettingsPanel) {
+  SettingsPanel.init({
+    config: CONFIG,
+    storageKey: 'minion-swarm.config',
+    mount: canvas.parentElement,
+    onRestart: restart,
+    onToggle: (open) => { state.paused = open; },
+  });
+}
+
+restart();
 window.game = state;    // handy for testing in the console
 window.CONFIG = CONFIG;
 requestAnimationFrame(frame);
