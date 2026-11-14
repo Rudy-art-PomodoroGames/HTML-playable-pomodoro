@@ -1,70 +1,283 @@
-// Minion Swarm — first playable slice.
-// Swarm auto-harvests the current zone. Clear every resource and the game
-// moves to the next zone automatically (Auto Drill style).
-// Merge two small minions into one big minion (more damage, slower hits).
+// Minion Swarm — core gameplay prototype.
+// An invisible leader (the future player) walks to resources. The swarm
+// follows it with a delay, harvests what is near it, and minions push each
+// other like physics bodies. Clear a zone and the next one starts
+// automatically (Auto Drill style).
+
+// ---- Tunable values (all in one place) ------------------------------------
+
+const CONFIG = {
+  startMinions: 4,
+
+  small: { dmg: 1, interval: 0.4, speed: 110, radius: 6, color: '#7bd389' },
+  big:   { dmg: 4, interval: 1.2, speed: 85,  radius: 11, color: '#f2a65a' },
+
+  hireBaseCost: 10,
+  hireCostStep: 5,
+  mergeCost: 5,
+
+  leaderSpeed: 60,          // slower than minions so the swarm keeps up
+  leaderStopDistance: 30,   // how close the leader walks to its resource
+  leaderWaitDistance: 60,   // leader pauses if the swarm lags this far behind
+  swarmRadius: 80,          // minions only attack resources this close to the leader
+  formationRadius: 22,      // spread of each minion's resting spot around the leader
+  followResponsiveness: 4,  // higher = minions react faster (less delay)
+  crowdPenalty: 20,         // makes minions prefer resources with fewer attackers
+  collisionPasses: 3,
+
+  zone: {
+    baseCount: 6, countPerZone: 2,
+    bigChanceBase: 0.2, bigChancePerZone: 0.1, bigChanceMax: 0.7,
+    smallSize: 20, bigSize: 40,
+    smallHp: 3, smallHpPerZone: 2,
+    bigHp: 12, bigHpPerZone: 6,
+    smallValue: 2, smallValuePerZone: 1,
+    bigValue: 6, bigValuePerZone: 3,
+    smallColor: '#b5552f', bigColor: '#7d2a1c',
+  },
+
+  clearDelay: 1.2,          // seconds between zones
+  showLeader: false,        // debug: draw the invisible leader
+};
+
+// ---- Setup -----------------------------------------------------------------
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const W = canvas.width;
 const H = canvas.height;
 
-const SMALL = { name: 'small', dmg: 1, interval: 0.4, speed: 130, color: '#7bd389', r: 6 };
-const BIG   = { name: 'big',   dmg: 4, interval: 1.2, speed: 75,  color: '#f2a65a', r: 12 };
-
-const HIRE_COST = (count) => 10 + count * 5;
-const MERGE_COST = 5;
-const CLEAR_DELAY = 1.2; // seconds between zones
-
 const state = {
   wood: 0,
   zone: 0,
   minions: [],
   resources: [],
+  leader: { x: W / 2, y: H - 90, target: null },
   clearing: 0,
   flash: '',
   flashT: 0,
 };
 
-// Zones get more resources, tougher trees, and more big trees.
+const hireCost = () => CONFIG.hireBaseCost + state.minions.length * CONFIG.hireCostStep;
+
+// ---- Geometry helpers ------------------------------------------------------
+
+function closestPoint(r, px, py) {
+  const h = r.size / 2;
+  return {
+    x: Math.max(r.x - h, Math.min(px, r.x + h)),
+    y: Math.max(r.y - h, Math.min(py, r.y + h)),
+  };
+}
+
+function distToRect(r, px, py) {
+  const c = closestPoint(r, px, py);
+  return Math.hypot(px - c.x, py - c.y);
+}
+
+// ---- Zones -----------------------------------------------------------------
+
 function makeZone(index) {
-  const count = 6 + index * 2;
-  const bigChance = Math.min(0.2 + index * 0.1, 0.7);
+  const z = CONFIG.zone;
+  const count = z.baseCount + index * z.countPerZone;
+  const bigChance = Math.min(z.bigChanceBase + index * z.bigChancePerZone, z.bigChanceMax);
   const list = [];
   for (let i = 0; i < count; i++) {
     const big = Math.random() < bigChance;
-    const maxHp = big ? 12 + index * 6 : 3 + index * 2;
+    const size = big ? z.bigSize : z.smallSize;
+    let x, y, ok = false;
+    // Keep resources apart so minions can walk between them.
+    for (let tries = 0; tries < 40 && !ok; tries++) {
+      x = 20 + size / 2 + Math.random() * (W - 40 - size);
+      y = 80 + size / 2 + Math.random() * (H - 200 - size);
+      ok = list.every((r) =>
+        Math.abs(r.x - x) > (r.size + size) / 2 + 16 ||
+        Math.abs(r.y - y) > (r.size + size) / 2 + 16);
+    }
+    if (!ok) continue;
+    const maxHp = big ? z.bigHp + index * z.bigHpPerZone : z.smallHp + index * z.smallHpPerZone;
     list.push({
-      x: 30 + Math.random() * (W - 60),
-      y: 90 + Math.random() * (H - 200),
-      r: big ? 22 : 12,
-      maxHp,
-      hp: maxHp,
-      value: big ? 6 + index * 3 : 2 + index,
+      x, y, size, big, maxHp, hp: maxHp,
+      value: big ? z.bigValue + index * z.bigValuePerZone : z.smallValue + index * z.smallValuePerZone,
       done: false,
     });
   }
   return list;
 }
 
-function spawn(type, x, y) {
-  return { type, x, y, target: null, cd: 0 };
-}
-
 function startZone() {
   state.resources = makeZone(state.zone);
+  state.leader.target = null;
   for (const m of state.minions) m.target = null;
 }
 
-function nearestAlive(m) {
+// ---- Minions ---------------------------------------------------------------
+
+function spawn(type, x, y) {
+  const a = Math.random() * Math.PI * 2;
+  const r = Math.random() * CONFIG.formationRadius;
+  return {
+    type, x, y, vx: 0, vy: 0, cd: 0, target: null,
+    ox: Math.cos(a) * r, oy: Math.sin(a) * r, // resting spot around the leader
+  };
+}
+
+function spawnNearLeader(type) {
+  const L = state.leader;
+  return spawn(type, L.x + (Math.random() - 0.5) * 30, L.y + (Math.random() - 0.5) * 30);
+}
+
+function inSwarmRange(r) {
+  return !r.done && distToRect(r, state.leader.x, state.leader.y) <= CONFIG.swarmRadius;
+}
+
+function pickTarget(m, attackers) {
   let best = null;
-  let bestD = Infinity;
+  let bestScore = Infinity;
   for (const r of state.resources) {
-    if (r.done) continue;
-    const d = Math.hypot(r.x - m.x, r.y - m.y);
-    if (d < bestD) { bestD = d; best = r; }
+    if (!inSwarmRange(r)) continue;
+    const score = distToRect(r, m.x, m.y) + (attackers.get(r) || 0) * CONFIG.crowdPenalty;
+    if (score < bestScore) { bestScore = score; best = r; }
   }
   return best;
 }
+
+function updateMinion(m, dt, attackers) {
+  const t = m.type;
+  const L = state.leader;
+
+  if (!m.target || !inSwarmRange(m.target)) {
+    if (m.target) attackers.set(m.target, (attackers.get(m.target) || 1) - 1);
+    m.target = pickTarget(m, attackers);
+    if (m.target) attackers.set(m.target, (attackers.get(m.target) || 0) + 1);
+  }
+
+  // Where this minion wants to be.
+  let gx, gy, stop;
+  if (m.target) {
+    const c = closestPoint(m.target, m.x, m.y);
+    gx = c.x; gy = c.y; stop = t.radius;
+  } else {
+    gx = L.x + m.ox; gy = L.y + m.oy; stop = 2;
+  }
+
+  // Steer toward it with some inertia, which gives the follow delay.
+  const dx = gx - m.x;
+  const dy = gy - m.y;
+  const d = Math.hypot(dx, dy);
+  let wantVx = 0, wantVy = 0;
+  if (d > stop + 1) {
+    const speed = t.speed * Math.min(1, (d - stop) / 30); // ease in on arrival
+    wantVx = (dx / d) * speed;
+    wantVy = (dy / d) * speed;
+  }
+  const k = Math.min(1, CONFIG.followResponsiveness * dt);
+  m.vx += (wantVx - m.vx) * k;
+  m.vy += (wantVy - m.vy) * k;
+  m.x += m.vx * dt;
+  m.y += m.vy * dt;
+
+  // Attack when touching the resource.
+  if (m.target && distToRect(m.target, m.x, m.y) <= t.radius + 3) {
+    m.cd -= dt;
+    if (m.cd <= 0) {
+      m.cd = t.interval;
+      m.target.hp -= t.dmg;
+    }
+  }
+}
+
+// Minions push each other (heavier big minions push harder) and are pushed
+// out of resources, like simple physics colliders.
+function resolveCollisions() {
+  const ms = state.minions;
+  for (let pass = 0; pass < CONFIG.collisionPasses; pass++) {
+    for (let i = 0; i < ms.length; i++) {
+      const a = ms[i];
+      for (let j = i + 1; j < ms.length; j++) {
+        const b = ms[j];
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        let d = Math.hypot(dx, dy);
+        const min = a.type.radius + b.type.radius;
+        if (d >= min) continue;
+        if (d === 0) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d = Math.hypot(dx, dy); }
+        const over = min - d;
+        const ma = a.type.radius ** 2;
+        const mb = b.type.radius ** 2;
+        const nx = dx / d;
+        const ny = dy / d;
+        a.x -= nx * over * (mb / (ma + mb));
+        a.y -= ny * over * (mb / (ma + mb));
+        b.x += nx * over * (ma / (ma + mb));
+        b.y += ny * over * (ma / (ma + mb));
+      }
+    }
+
+    for (const m of ms) {
+      const rad = m.type.radius;
+      for (const r of state.resources) {
+        if (r.done) continue;
+        const h = r.size / 2;
+        const c = closestPoint(r, m.x, m.y);
+        const dx = m.x - c.x;
+        const dy = m.y - c.y;
+        const d = Math.hypot(dx, dy);
+        if (d >= rad) continue;
+        if (d > 0) {
+          m.x += (dx / d) * (rad - d);
+          m.y += (dy / d) * (rad - d);
+        } else {
+          // Center is inside the square: push out along the shortest side.
+          const px = h - Math.abs(m.x - r.x);
+          const py = h - Math.abs(m.y - r.y);
+          if (px < py) m.x = r.x + Math.sign(m.x - r.x || 1) * (h + rad);
+          else m.y = r.y + Math.sign(m.y - r.y || 1) * (h + rad);
+        }
+      }
+      m.x = Math.max(rad, Math.min(W - rad, m.x));
+      m.y = Math.max(rad, Math.min(H - rad, m.y));
+    }
+  }
+}
+
+// ---- Leader (invisible player) ---------------------------------------------
+
+function updateLeader(dt) {
+  const L = state.leader;
+  if (!L.target || L.target.done) {
+    let best = null;
+    let bestD = Infinity;
+    for (const r of state.resources) {
+      if (r.done) continue;
+      const d = distToRect(r, L.x, L.y);
+      if (d < bestD) { bestD = d; best = r; }
+    }
+    L.target = best;
+  }
+  if (!L.target) return;
+
+  // Wait for the swarm if it lags behind, so the group stays together.
+  if (state.minions.length) {
+    let cx = 0, cy = 0;
+    for (const m of state.minions) { cx += m.x; cy += m.y; }
+    cx /= state.minions.length;
+    cy /= state.minions.length;
+    if (Math.hypot(cx - L.x, cy - L.y) > CONFIG.leaderWaitDistance) return;
+  }
+
+  const c = closestPoint(L.target, L.x, L.y);
+  const dx = c.x - L.x;
+  const dy = c.y - L.y;
+  const d = Math.hypot(dx, dy);
+  if (d > CONFIG.leaderStopDistance) {
+    const step = Math.min(CONFIG.leaderSpeed * dt, d - CONFIG.leaderStopDistance);
+    L.x += (dx / d) * step;
+    L.y += (dy / d) * step;
+  }
+}
+
+// ---- Update ----------------------------------------------------------------
 
 function update(dt) {
   if (state.flashT > 0) state.flashT -= dt;
@@ -76,46 +289,28 @@ function update(dt) {
       startZone();
       flash(`Zone ${state.zone + 1}`);
     }
-    return;
   }
 
-  // Harvest anything that reached zero HP, even if no minion hit it this frame.
+  updateLeader(dt);
+
+  const attackers = new Map();
+  for (const m of state.minions) {
+    if (m.target && !m.target.done) attackers.set(m.target, (attackers.get(m.target) || 0) + 1);
+  }
+  for (const m of state.minions) updateMinion(m, dt, attackers);
+  resolveCollisions();
+
+  // Harvest everything that reached zero HP.
   for (const r of state.resources) {
     if (r.hp <= 0 && !r.done) {
       r.done = true;
       state.wood += r.value;
     }
   }
-
-  for (const m of state.minions) {
-    if (!m.target || m.target.done) m.target = nearestAlive(m);
-    if (!m.target) continue;
-
-    const t = m.target;
-    const dx = t.x - m.x;
-    const dy = t.y - m.y;
-    const d = Math.hypot(dx, dy);
-    const reach = t.r + m.type.r;
-
-    // Small tolerance so a minion parked right at its reach starts attacking
-    // instead of creeping forever toward it.
-    if (d > reach + 1) {
-      const step = Math.min(m.type.speed * dt, d - reach);
-      m.x += (dx / d) * step;
-      m.y += (dy / d) * step;
-    } else {
-      m.cd -= dt;
-      if (m.cd <= 0) {
-        m.cd = m.type.interval;
-        t.hp -= m.type.dmg;
-      }
-    }
-  }
-
   state.resources = state.resources.filter((r) => !r.done);
 
-  if (state.resources.length === 0) {
-    state.clearing = CLEAR_DELAY;
+  if (state.resources.length === 0 && state.clearing <= 0) {
+    state.clearing = CONFIG.clearDelay;
     flash('Zone cleared!');
   }
 }
@@ -125,23 +320,21 @@ function flash(text) {
   state.flashT = 1.8;
 }
 
-// ---- Actions -------------------------------------------------------------
+// ---- Actions ---------------------------------------------------------------
 
 function hire() {
-  const cost = HIRE_COST(state.minions.length);
+  const cost = hireCost();
   if (state.wood < cost) return;
   state.wood -= cost;
-  const x = W / 2 + (Math.random() - 0.5) * 40;
-  state.minions.push(spawn(SMALL, x, H - 60));
+  state.minions.push(spawnNearLeader(CONFIG.small));
 }
 
 function merge() {
-  const smalls = state.minions.filter((m) => m.type === SMALL);
-  if (smalls.length < 2 || state.wood < MERGE_COST) return;
-  state.wood -= MERGE_COST;
+  const smalls = state.minions.filter((m) => m.type === CONFIG.small);
+  if (smalls.length < 2 || state.wood < CONFIG.mergeCost) return;
+  state.wood -= CONFIG.mergeCost;
   const [a, b] = smalls;
-  const big = spawn(BIG, a.x, a.y);
-  big.target = a.target;
+  const big = spawn(CONFIG.big, (a.x + b.x) / 2, (a.y + b.y) / 2);
   state.minions = state.minions.filter((m) => m !== a && m !== b);
   state.minions.push(big);
 }
@@ -149,28 +342,42 @@ function merge() {
 document.getElementById('hire').addEventListener('click', hire);
 document.getElementById('merge').addEventListener('click', merge);
 
-// ---- Render --------------------------------------------------------------
+// ---- Render ----------------------------------------------------------------
 
 function draw() {
   ctx.fillStyle = '#1f3a24';
   ctx.fillRect(0, 0, W, H);
 
   for (const r of state.resources) {
-    ctx.fillStyle = r.r > 15 ? '#2e6b3a' : '#4f9a57';
-    ctx.beginPath();
-    ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
-    ctx.fillRect(r.x - r.r, r.y + r.r + 4, 2 * r.r, 3);
-    ctx.fillStyle = '#f5e663';
-    ctx.fillRect(r.x - r.r, r.y + r.r + 4, 2 * r.r * Math.max(r.hp, 0) / r.maxHp, 3);
+    const h = r.size / 2;
+    ctx.fillStyle = r.big ? CONFIG.zone.bigColor : CONFIG.zone.smallColor;
+    ctx.fillRect(r.x - h, r.y - h, r.size, r.size);
+    ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(r.x - h, r.y - h, r.size, r.size);
+    if (r.hp < r.maxHp) {
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(r.x - h, r.y - h - 7, r.size, 4);
+      ctx.fillStyle = '#f5e663';
+      ctx.fillRect(r.x - h, r.y - h - 7, r.size * Math.max(r.hp, 0) / r.maxHp, 4);
+    }
   }
 
   for (const m of state.minions) {
     ctx.fillStyle = m.type.color;
     ctx.beginPath();
-    ctx.arc(m.x, m.y, m.type.r, 0, Math.PI * 2);
+    ctx.arc(m.x, m.y, m.type.radius, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  if (CONFIG.showLeader) {
+    ctx.strokeStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(state.leader.x, state.leader.y, 5, 0, Math.PI * 2);
+    ctx.stroke();
   }
 
   ctx.fillStyle = '#e8f5ea';
@@ -193,14 +400,15 @@ function draw() {
 function syncButtons() {
   const hireBtn = document.getElementById('hire');
   const mergeBtn = document.getElementById('merge');
-  const cost = HIRE_COST(state.minions.length);
+  const cost = hireCost();
   hireBtn.textContent = `Hire minion (${cost} wood)`;
   hireBtn.disabled = state.wood < cost;
-  const smalls = state.minions.filter((m) => m.type === SMALL).length;
-  mergeBtn.disabled = smalls < 2 || state.wood < MERGE_COST;
+  const smalls = state.minions.filter((m) => m.type === CONFIG.small).length;
+  mergeBtn.textContent = `Merge 2 small → big (${CONFIG.mergeCost})`;
+  mergeBtn.disabled = smalls < 2 || state.wood < CONFIG.mergeCost;
 }
 
-// ---- Loop ----------------------------------------------------------------
+// ---- Loop ------------------------------------------------------------------
 
 let last = performance.now();
 function frame() {
@@ -213,7 +421,8 @@ function frame() {
   requestAnimationFrame(frame);
 }
 
-state.minions.push(spawn(SMALL, W / 2, H - 60));
+for (let i = 0; i < CONFIG.startMinions; i++) state.minions.push(spawnNearLeader(CONFIG.small));
 startZone();
-window.game = state; // handy for testing in the console
+window.game = state;    // handy for testing in the console
+window.CONFIG = CONFIG;
 requestAnimationFrame(frame);
