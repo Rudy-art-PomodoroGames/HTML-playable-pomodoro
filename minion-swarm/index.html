@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Minion Swarm</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body { margin: 0; height: 100%; background: #0f1a12; font-family: system-ui, sans-serif; color: #e8f5ea; }
+    body { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    canvas { width: min(100vw, 56vh * 0.64); height: auto; max-height: 80vh; background: #1f3a24; border-radius: 12px; touch-action: none; }
+    .bar { display: flex; gap: 8px; margin-top: 12px; }
+    button { flex: 1; padding: 12px 16px; font: inherit; font-weight: 600; border: 0; border-radius: 10px; background: #3d7a4a; color: #fff; cursor: pointer; min-width: 140px; }
+    button:disabled { background: #2a3a2e; color: #7a8a7e; cursor: default; }
+  </style>
+</head>
+<body>
+  <canvas id="game" width="360" height="560"></canvas>
+  <div class="bar">
+    <button id="hire">Hire minion</button>
+    <button id="merge">Merge 2 small → big</button>
+  </div>
+  <script src="game.js"></script>
+</body>
+</html>
