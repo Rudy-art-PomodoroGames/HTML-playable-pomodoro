@@ -460,6 +460,26 @@ function draw() {
     ctx.strokeStyle = 'rgba(0,0,0,0.4)';
     ctx.lineWidth = 2;
     ctx.strokeRect(x - h, y - h, r.size, r.size);
+    r.drawX = x; // shaken position, reused by the overlay pass
+    r.drawY = y;
+  }
+
+  for (const m of state.minions) {
+    ctx.fillStyle = m.type.color;
+    ctx.beginPath();
+    ctx.arc(m.x, m.y, m.type.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  // Overlays: HP bars, HP numbers and damage numbers always draw on top of
+  // minions and resources.
+  for (const r of state.resources) {
+    const h = r.size / 2;
+    const x = r.drawX;
+    const y = r.drawY;
     if (r.hp < r.maxHp) {
       ctx.fillStyle = 'rgba(0,0,0,0.5)';
       ctx.fillRect(r.x - h, r.y - h - 7, r.size, 4);
@@ -507,16 +527,6 @@ function draw() {
     ctx.arc(state.guide.x, state.guide.y, 14, 0, Math.PI * 2);
     ctx.stroke();
     ctx.globalAlpha = 1;
-  }
-
-  for (const m of state.minions) {
-    ctx.fillStyle = m.type.color;
-    ctx.beginPath();
-    ctx.arc(m.x, m.y, m.type.radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
   }
 
   if (CONFIG.showLeader) {
