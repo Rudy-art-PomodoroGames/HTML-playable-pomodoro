@@ -6,7 +6,7 @@
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 8;
+const BUILD = 9;
 
 // ---- Tunable values (all in one place) ------------------------------------
 
@@ -27,6 +27,8 @@ const CONFIG = {
 
   // Price of the Nth minion bought. Based on total purchases, so merging
   // never makes hiring cheaper.
+  mergeHighestFirst: false, // Merge button: off = lowest level pair first, on = highest level pair first
+
   hireBaseCost: 10,
   hireCostStep: 5,
 
@@ -187,15 +189,16 @@ function spawnNearLeader(level) {
   return spawn(level, L.x + (Math.random() - 0.5) * 30, L.y + (Math.random() - 0.5) * 30);
 }
 
-// The pair the Merge button will combine: lowest level that has two
-// minions, and of those, the two closest to each other.
+// The pair the Merge button will combine: the lowest (or, with
+// mergeHighestFirst, the highest) level that has two minions, and of those,
+// the two closest to each other.
 function nextMergePair() {
   const byLevel = new Map();
   for (const m of state.minions) {
     if (!byLevel.has(m.level)) byLevel.set(m.level, []);
     byLevel.get(m.level).push(m);
   }
-  const levels = [...byLevel.keys()].sort((a, b) => a - b);
+  const levels = [...byLevel.keys()].sort((a, b) => (CONFIG.mergeHighestFirst ? b - a : a - b));
   for (const lvl of levels) {
     const list = byLevel.get(lvl);
     if (list.length < 2) continue;
