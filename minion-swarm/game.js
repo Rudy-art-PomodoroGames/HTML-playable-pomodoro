@@ -25,7 +25,6 @@ const CONFIG = {
   // never makes hiring cheaper.
   hireBaseCost: 10,
   hireCostStep: 5,
-  highlightMerge: true,     // ring the pair the Merge button will combine
 
   leaderSpeed: 60,          // slower than minions so the swarm keeps up
   leaderStopDistance: 30,   // how close the leader walks to its resource
@@ -536,20 +535,6 @@ function draw() {
       ctx.fillText(String(m.level), m.x, m.y + 1);
       ctx.textBaseline = 'alphabetic';
     }
-  }
-
-  // Pulse a ring around the pair the Merge button will combine.
-  const pair = CONFIG.highlightMerge ? nextMergePair() : null;
-  if (pair) {
-    ctx.globalAlpha = 0.55 + 0.35 * Math.sin(performance.now() / 160);
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
-    for (const m of pair) {
-      ctx.beginPath();
-      ctx.arc(m.x, m.y, m.type.radius + 3, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
   }
 
   // Overlays: HP bars, HP numbers and damage numbers always draw on top of
