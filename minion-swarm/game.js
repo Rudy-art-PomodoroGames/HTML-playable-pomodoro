@@ -16,7 +16,7 @@ const CONFIG = {
     baseDmg: 1, dmgMultPerLevel: 2.5,             // damage per hit (rounded)
     baseInterval: 0.4, intervalMultPerLevel: 1.2, // seconds between hits
     baseSpeed: 110, speedMultPerLevel: 0.93,
-    baseRadius: 6, radiusPerLevel: 2, maxRadius: 18,
+    baseRadius: 6, radiusPerLevel: 3,             // size keeps growing with every level
     showLevel: true,                              // level number on minions of level 2+
     colors: ['#7bd389', '#f2a65a', '#6ec6ff', '#c792ea', '#ff6b6b', '#ffd93d', '#ffffff', '#a0e7e5'],
   },
@@ -108,7 +108,7 @@ function statsFor(level) {
     dmg: Math.max(1, Math.round(c.baseDmg * Math.pow(c.dmgMultPerLevel, n))),
     interval: c.baseInterval * Math.pow(c.intervalMultPerLevel, n),
     speed: c.baseSpeed * Math.pow(c.speedMultPerLevel, n),
-    radius: Math.min(c.maxRadius, c.baseRadius + c.radiusPerLevel * n),
+    radius: c.baseRadius + c.radiusPerLevel * n,
     color: c.colors[n % c.colors.length],
   };
 }

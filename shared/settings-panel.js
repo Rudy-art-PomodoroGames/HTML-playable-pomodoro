@@ -22,6 +22,19 @@
     }
   }
 
+  // Only the values that differ from the defaults, so new defaults in a
+  // later build still apply to everything you haven't changed.
+  function diff(cfg, def) {
+    const out = {};
+    for (const k of Object.keys(cfg)) {
+      if (cfg[k] && typeof cfg[k] === 'object') {
+        const d = diff(cfg[k], def[k] || {});
+        if (Object.keys(d).length) out[k] = d;
+      } else if (cfg[k] !== def[k]) out[k] = cfg[k];
+    }
+    return out;
+  }
+
   function load(key) {
     try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
   }
@@ -125,7 +138,7 @@
           if (Number.isNaN(n)) return;
           obj[key] = n;
         } else obj[key] = input.value;
-        save(storageKey, config);
+        save(storageKey, diff(config, defaults));
         markChanged();
       });
 
