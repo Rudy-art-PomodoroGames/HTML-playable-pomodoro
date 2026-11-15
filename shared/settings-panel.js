@@ -70,9 +70,19 @@
     .sp-json { width: 100%; box-sizing: border-box; height: 140px; margin-top: 8px; font: 12px ui-monospace, monospace;
       background: #0f1a12; color: #e8f5ea; border: 1px solid #3d5a43; border-radius: 6px; display: none; }
     .sp-hint { font-size: 12px; color: #9fc3a6; margin: 8px 0 0; }
+    .sp-row label.sp-has-help { text-decoration: underline dotted rgba(232,245,234,0.5); text-underline-offset: 3px; cursor: help; }
+    .sp-tip { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; z-index: 110;
+      background: rgba(0,0,0,0.35); font-family: system-ui, sans-serif; }
+    .sp-tip.open { display: flex; }
+    .sp-tip-card { background: #24382a; color: #e8f5ea; width: min(340px, calc(100vw - 48px)); border-radius: 12px;
+      padding: 14px 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+    .sp-tip-title { font: 600 13px ui-monospace, monospace; color: #9fc3a6; margin-bottom: 6px; word-break: break-all; }
+    .sp-tip-text { font-size: 15px; line-height: 1.4; }
+    .sp-tip-close { font-size: 12px; color: #9fc3a6; margin-top: 10px; }
   `;
 
-  function init({ config, storageKey, mount, onRestart, onToggle }) {
+  // help: { 'path.to.value': 'what it does' }. Tapping a setting's name shows it.
+  function init({ config, storageKey, mount, onRestart, onToggle, help = {} }) {
     const defaults = clone(config);
     assignIn(config, load(storageKey));
 
@@ -101,6 +111,20 @@
     document.body.appendChild(overlay);
     const body = overlay.querySelector('.sp-body');
 
+    // Help popup, shown on top of the panel when a setting's name is tapped.
+    const tip = document.createElement('div');
+    tip.className = 'sp-tip';
+    tip.innerHTML = '<div class="sp-tip-card"><div class="sp-tip-title"></div><div class="sp-tip-text"></div>' +
+      '<div class="sp-tip-close">Tap anywhere to close</div></div>';
+    document.body.appendChild(tip);
+    tip.addEventListener('click', () => tip.classList.remove('open'));
+    const helpFor = (path) => help[path] || help[path.replace(/\.\d+$/, '')]; // list items share their list's text
+    function showTip(path, text) {
+      tip.querySelector('.sp-tip-title').textContent = path;
+      tip.querySelector('.sp-tip-text').textContent = text;
+      tip.classList.add('open');
+    }
+
     function setOpen(open) {
       overlay.classList.toggle('open', open);
       if (onToggle) onToggle(open);
@@ -112,6 +136,11 @@
       row.className = 'sp-row';
       const label = document.createElement('label');
       label.textContent = path;
+      const text = helpFor(path);
+      if (text) {
+        label.classList.add('sp-has-help');
+        label.addEventListener('click', () => showTip(path, text));
+      }
       const input = document.createElement('input');
 
       if (typeof value === 'boolean') {
@@ -172,7 +201,7 @@
       walk(config, defaults, '');
       const hint = document.createElement('p');
       hint.className = 'sp-hint';
-      hint.textContent = 'Changes apply live and are saved in this browser. Start and zone values apply on Restart. Yellow = changed from default.';
+      hint.textContent = 'Tap a setting name to see what it does. Changes apply live and are saved in this browser. Start and zone values apply on Restart. Yellow = changed from default.';
       body.appendChild(hint);
       json.style.display = 'none';
       body.appendChild(json);

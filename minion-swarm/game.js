@@ -6,7 +6,7 @@
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 10;
+const BUILD = 11;
 
 // ---- Tunable values (all in one place) ------------------------------------
 
@@ -80,6 +80,63 @@ const CONFIG = {
 
   clearDelay: 1.2,          // seconds between zones
   showLeader: false,        // debug: draw the invisible leader
+};
+
+// Explanations shown when tapping a setting's name in the ⚙ panel.
+const CONFIG_HELP = {
+  startMinions: 'How many level 1 minions you start with. Applies on Restart.',
+  'minion.baseDmg': 'Damage per hit of a level 1 minion.',
+  'minion.dmgMultPerLevel': 'Damage per hit is multiplied by this at each level (rounded). 2.5 means Lv1 = 1, Lv2 = 3, Lv3 = 6, Lv4 = 16.',
+  'minion.baseInterval': 'Seconds between two hits for a level 1 minion. Lower = faster attacks.',
+  'minion.intervalMultPerLevel': 'Time between hits is multiplied by this at each level. Above 1 = higher levels hit slower. Set to 1 so all levels hit at the same speed.',
+  'minion.baseSpeed': 'Movement speed of a level 1 minion, in pixels per second.',
+  'minion.speedMultPerLevel': 'Movement speed is multiplied by this at each level. Below 1 = higher levels move slower.',
+  'minion.baseRadius': 'Size (radius in pixels) of a level 1 minion.',
+  'minion.radiusPerLevel': 'Pixels added to the size at each level. Bigger minions take more room around a resource.',
+  'minion.showLevel': 'Show the level number on minions of level 2 and up.',
+  'minion.colors': 'Color of each level: first = level 1, second = level 2, and so on. Repeats after the last one.',
+  mergeHighestFirst: 'Off: the Merge button combines the lowest-level pair first. On: it combines the highest-level pair first.',
+  hireBaseCost: 'Wood price of the first minion you hire.',
+  hireCostStep: 'Wood added to the price for every minion hired. Merging never lowers the price.',
+  leaderSpeed: 'Speed of the invisible leader the swarm follows when it moves on its own. Keep it below the minion speed so the swarm keeps up.',
+  leaderStopDistance: 'How close the leader walks to the resource it is heading for, in pixels.',
+  leaderWaitDistance: 'If the swarm falls this far behind (pixels), the leader waits for it. Keeps the group together.',
+  swarmRadius: 'Minions only attack resources within this distance (pixels) of the leader. Bigger = the swarm spreads over more resources at once.',
+  formationRadius: 'How spread out minions rest around the leader when not attacking, in pixels.',
+  followResponsiveness: 'How quickly minions react to changes of direction. Higher = snappier, lower = more delay and drift.',
+  crowdPenalty: 'How strongly minions avoid resources other minions are already attacking. Higher = they spread out more.',
+  collisionPasses: 'How many times per frame minion collisions are solved. Higher = less overlap, a bit more work for the phone.',
+  'zone.baseCount': 'Number of resources in zone 1. Applies from the next zone or on Restart.',
+  'zone.countPerZone': 'Resources added for each zone after the first. Applies from the next zone or on Restart.',
+  'zone.bigChanceBase': 'Chance (0 to 1) that a resource is a big tree in zone 1. Applies from the next zone or on Restart.',
+  'zone.bigChancePerZone': 'Big tree chance added for each zone after the first. Applies from the next zone or on Restart.',
+  'zone.bigChanceMax': 'Highest big tree chance, whatever the zone. Applies from the next zone or on Restart.',
+  'zone.smallSize': 'Size of small resources (bushes), in pixels. Applies from the next zone or on Restart.',
+  'zone.bigSize': 'Size of big resources (trees), in pixels. Applies from the next zone or on Restart.',
+  'zone.smallHp': 'HP of a small resource in zone 1. Applies from the next zone or on Restart.',
+  'zone.bigHp': 'HP of a big resource in zone 1. Applies from the next zone or on Restart.',
+  'zone.hpMultPerZone': 'Resource HP is multiplied by this for each zone after the first. 1.35 = +35% per zone. Applies from the next zone or on Restart.',
+  'zone.smallValue': 'Wood earned from a small resource in zone 1. Applies from the next zone or on Restart.',
+  'zone.bigValue': 'Wood earned from a big resource in zone 1. Applies from the next zone or on Restart.',
+  'zone.valueMultPerZone': 'Wood earned is multiplied by this for each zone after the first. Applies from the next zone or on Restart.',
+  'zone.smallColor': 'Color of small resources.',
+  'zone.bigColor': 'Color of big resources.',
+  'guide.speed': 'How fast the swarm heads to the point you tap, in pixels per second.',
+  'guide.showMarker': 'Show a white ring where you tapped until the swarm gets there.',
+  'shake.duration': 'How long a resource shakes after a hit, in seconds.',
+  'shake.amount': 'How strongly a resource shakes after a hit, in pixels.',
+  'hpText.show': 'Show the remaining HP number in the middle of each resource.',
+  'hpText.smallFontSize': 'Text size of the HP number on small resources.',
+  'hpText.bigFontSize': 'Text size of the HP number on big resources.',
+  'hpText.color': 'Color of the HP number.',
+  'damagePopup.show': 'Show a number for each hit, popping where the minion touches the resource.',
+  'damagePopup.duration': 'How long a damage number stays before it has fully faded, in seconds.',
+  'damagePopup.rise': 'How far a damage number floats up while fading, in pixels.',
+  'damagePopup.popScale': 'How big a damage number starts before shrinking to normal size. 1 = no pop.',
+  'damagePopup.fontSize': 'Text size of damage numbers.',
+  'damagePopup.color': 'Color of damage numbers.',
+  clearDelay: 'Pause in seconds between clearing a zone and the next zone appearing.',
+  showLeader: 'Debug: show the invisible leader the swarm follows, as a small white circle.',
 };
 
 // ---- Setup -----------------------------------------------------------------
@@ -658,6 +715,7 @@ if (window.SettingsPanel) {
   SettingsPanel.init({
     config: CONFIG,
     storageKey: 'minion-swarm.config',
+    help: CONFIG_HELP,
     mount: canvas.parentElement,
     onRestart: restart,
     onToggle: (open) => { state.paused = open; },
