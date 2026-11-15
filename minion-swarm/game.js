@@ -4,6 +4,10 @@
 // other like physics bodies. Clear a zone and the next one starts
 // automatically (Auto Drill style).
 
+// Build number, shown in the corner. Bump it together with the ?v= in
+// index.html on every push so phones load the new version.
+const BUILD = 8;
+
 // ---- Tunable values (all in one place) ------------------------------------
 
 const CONFIG = {
@@ -606,6 +610,12 @@ function draw() {
   ctx.fillText(`Wood ${Math.floor(state.wood)}`, 54, 46);
   ctx.textAlign = 'right';
   ctx.fillText(`Minions ${state.minions.length}`, W - 12, 24);
+
+  ctx.globalAlpha = 0.4;
+  ctx.font = '11px system-ui, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText(`build ${BUILD}`, W - 8, H - 8);
+  ctx.globalAlpha = 1;
 
   if (state.flashT > 0) {
     ctx.globalAlpha = Math.min(1, state.flashT);
