@@ -6,12 +6,12 @@
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 9;
+const BUILD = 10;
 
 // ---- Tunable values (all in one place) ------------------------------------
 
 const CONFIG = {
-  startMinions: 4,
+  startMinions: 10,
 
   // Minion stats by level. Level 1 uses the base values; each level up
   // multiplies them. Merging two minions of the same level makes one of the
@@ -27,7 +27,7 @@ const CONFIG = {
 
   // Price of the Nth minion bought. Based on total purchases, so merging
   // never makes hiring cheaper.
-  mergeHighestFirst: false, // Merge button: off = lowest level pair first, on = highest level pair first
+  mergeHighestFirst: true,  // Merge button: off = lowest level pair first, on = highest level pair first
 
   hireBaseCost: 10,
   hireCostStep: 5,
