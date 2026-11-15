@@ -9,12 +9,23 @@
 const CONFIG = {
   startMinions: 4,
 
-  small: { dmg: 1, interval: 0.4, speed: 110, radius: 6, color: '#7bd389' },
-  big:   { dmg: 4, interval: 1.2, speed: 85,  radius: 11, color: '#f2a65a' },
+  // Minion stats by level. Level 1 uses the base values; each level up
+  // multiplies them. Merging two minions of the same level makes one of the
+  // next level (2048 style). Merging is free.
+  minion: {
+    baseDmg: 1, dmgMultPerLevel: 2.5,             // damage per hit (rounded)
+    baseInterval: 0.4, intervalMultPerLevel: 1.2, // seconds between hits
+    baseSpeed: 110, speedMultPerLevel: 0.93,
+    baseRadius: 6, radiusPerLevel: 2, maxRadius: 18,
+    showLevel: true,                              // level number on minions of level 2+
+    colors: ['#7bd389', '#f2a65a', '#6ec6ff', '#c792ea', '#ff6b6b', '#ffd93d', '#ffffff', '#a0e7e5'],
+  },
 
+  // Price of the Nth minion bought. Based on total purchases, so merging
+  // never makes hiring cheaper.
   hireBaseCost: 10,
   hireCostStep: 5,
-  mergeCost: 5,
+  highlightMerge: true,     // ring the pair the Merge button will combine
 
   leaderSpeed: 60,          // slower than minions so the swarm keeps up
   leaderStopDistance: 30,   // how close the leader walks to its resource
@@ -29,10 +40,10 @@ const CONFIG = {
     baseCount: 6, countPerZone: 2,
     bigChanceBase: 0.2, bigChancePerZone: 0.1, bigChanceMax: 0.7,
     smallSize: 20, bigSize: 40,
-    smallHp: 3, smallHpPerZone: 2,
-    bigHp: 12, bigHpPerZone: 6,
-    smallValue: 2, smallValuePerZone: 1,
-    bigValue: 6, bigValuePerZone: 3,
+    smallHp: 3, bigHp: 12,          // HP in zone 1
+    hpMultPerZone: 1.35,            // HP × this for each zone after
+    smallValue: 2, bigValue: 6,     // wood in zone 1
+    valueMultPerZone: 1.3,          // wood × this for each zone after
     smallColor: '#b5552f', bigColor: '#7d2a1c',
   },
 
@@ -76,6 +87,7 @@ const H = canvas.height;
 const state = {
   wood: 0,
   zone: 0,
+  purchases: 0,             // minions bought this run (sets the hire price)
   minions: [],
   resources: [],
   leader: { x: W / 2, y: H - 90, target: null },
@@ -87,7 +99,20 @@ const state = {
   flashT: 0,
 };
 
-const hireCost = () => CONFIG.hireBaseCost + state.minions.length * CONFIG.hireCostStep;
+const hireCost = () => CONFIG.hireBaseCost + state.purchases * CONFIG.hireCostStep;
+
+// Stats for a minion level, from the CONFIG.minion multipliers.
+function statsFor(level) {
+  const c = CONFIG.minion;
+  const n = level - 1;
+  return {
+    dmg: Math.max(1, Math.round(c.baseDmg * Math.pow(c.dmgMultPerLevel, n))),
+    interval: c.baseInterval * Math.pow(c.intervalMultPerLevel, n),
+    speed: c.baseSpeed * Math.pow(c.speedMultPerLevel, n),
+    radius: Math.min(c.maxRadius, c.baseRadius + c.radiusPerLevel * n),
+    color: c.colors[n % c.colors.length],
+  };
+}
 
 // ---- Geometry helpers ------------------------------------------------------
 
@@ -124,10 +149,10 @@ function makeZone(index) {
         Math.abs(r.y - y) > (r.size + size) / 2 + 16);
     }
     if (!ok) continue;
-    const maxHp = big ? z.bigHp + index * z.bigHpPerZone : z.smallHp + index * z.smallHpPerZone;
+    const maxHp = Math.max(1, Math.round((big ? z.bigHp : z.smallHp) * Math.pow(z.hpMultPerZone, index)));
     list.push({
       x, y, size, big, maxHp, hp: maxHp,
-      value: big ? z.bigValue + index * z.bigValuePerZone : z.smallValue + index * z.smallValuePerZone,
+      value: Math.max(1, Math.round((big ? z.bigValue : z.smallValue) * Math.pow(z.valueMultPerZone, index))),
       done: false,
       shake: 0,
     });
@@ -143,18 +168,45 @@ function startZone() {
 
 // ---- Minions ---------------------------------------------------------------
 
-function spawn(type, x, y) {
+// m.type holds the stats for m.level; it's refreshed every frame so changes
+// in the settings panel apply live.
+function spawn(level, x, y) {
   const a = Math.random() * Math.PI * 2;
   const r = Math.random() * CONFIG.formationRadius;
   return {
-    type, x, y, vx: 0, vy: 0, cd: 0, target: null,
+    level, type: statsFor(level), x, y, vx: 0, vy: 0, cd: 0, target: null,
     ox: Math.cos(a) * r, oy: Math.sin(a) * r, // resting spot around the leader
   };
 }
 
-function spawnNearLeader(type) {
+function spawnNearLeader(level) {
   const L = state.leader;
-  return spawn(type, L.x + (Math.random() - 0.5) * 30, L.y + (Math.random() - 0.5) * 30);
+  return spawn(level, L.x + (Math.random() - 0.5) * 30, L.y + (Math.random() - 0.5) * 30);
+}
+
+// The pair the Merge button will combine: lowest level that has two
+// minions, and of those, the two closest to each other.
+function nextMergePair() {
+  const byLevel = new Map();
+  for (const m of state.minions) {
+    if (!byLevel.has(m.level)) byLevel.set(m.level, []);
+    byLevel.get(m.level).push(m);
+  }
+  const levels = [...byLevel.keys()].sort((a, b) => a - b);
+  for (const lvl of levels) {
+    const list = byLevel.get(lvl);
+    if (list.length < 2) continue;
+    let best = null;
+    let bestD = Infinity;
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        const d = Math.hypot(list[i].x - list[j].x, list[i].y - list[j].y);
+        if (d < bestD) { bestD = d; best = [list[i], list[j]]; }
+      }
+    }
+    return best;
+  }
+  return null;
 }
 
 function inSwarmRange(r) {
@@ -342,6 +394,7 @@ function updateLeader(dt) {
 // ---- Update ----------------------------------------------------------------
 
 function update(dt) {
+  for (const m of state.minions) m.type = statsFor(m.level);
   if (state.paused) return;
   if (state.flashT > 0) state.flashT -= dt;
   for (const r of state.resources) if (r.shake > 0) r.shake -= dt;
@@ -392,17 +445,19 @@ function hire() {
   const cost = hireCost();
   if (state.wood < cost) return;
   state.wood -= cost;
-  state.minions.push(spawnNearLeader(CONFIG.small));
+  state.purchases++;
+  state.minions.push(spawnNearLeader(1));
 }
 
+// Free 2048-style merge: the two closest minions of the lowest level that
+// has a pair become one minion of the next level.
 function merge() {
-  const smalls = state.minions.filter((m) => m.type === CONFIG.small);
-  if (smalls.length < 2 || state.wood < CONFIG.mergeCost) return;
-  state.wood -= CONFIG.mergeCost;
-  const [a, b] = smalls;
-  const big = spawn(CONFIG.big, (a.x + b.x) / 2, (a.y + b.y) / 2);
+  const pair = nextMergePair();
+  if (!pair) return;
+  const [a, b] = pair;
+  const merged = spawn(a.level + 1, (a.x + b.x) / 2, (a.y + b.y) / 2);
   state.minions = state.minions.filter((m) => m !== a && m !== b);
-  state.minions.push(big);
+  state.minions.push(merged);
 }
 
 document.getElementById('hire').addEventListener('click', hire);
@@ -411,6 +466,7 @@ document.getElementById('merge').addEventListener('click', merge);
 function restart() {
   state.wood = 0;
   state.zone = 0;
+  state.purchases = 0;
   state.clearing = 0;
   state.flashT = 0;
   state.guide = null;
@@ -418,7 +474,7 @@ function restart() {
   state.leader.x = W / 2;
   state.leader.y = H - 90;
   state.minions = [];
-  for (let i = 0; i < CONFIG.startMinions; i++) state.minions.push(spawnNearLeader(CONFIG.small));
+  for (let i = 0; i < CONFIG.startMinions; i++) state.minions.push(spawnNearLeader(1));
   startZone();
 }
 
@@ -472,6 +528,28 @@ function draw() {
     ctx.strokeStyle = 'rgba(0,0,0,0.35)';
     ctx.lineWidth = 1.5;
     ctx.stroke();
+    if (CONFIG.minion.showLevel && m.level > 1) {
+      ctx.fillStyle = '#1b2a1e';
+      ctx.font = `bold ${Math.max(8, Math.round(m.type.radius * 1.1))}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(m.level), m.x, m.y + 1);
+      ctx.textBaseline = 'alphabetic';
+    }
+  }
+
+  // Pulse a ring around the pair the Merge button will combine.
+  const pair = CONFIG.highlightMerge ? nextMergePair() : null;
+  if (pair) {
+    ctx.globalAlpha = 0.55 + 0.35 * Math.sin(performance.now() / 160);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    for (const m of pair) {
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, m.type.radius + 3, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
   }
 
   // Overlays: HP bars, HP numbers and damage numbers always draw on top of
@@ -559,9 +637,9 @@ function syncButtons() {
   const cost = hireCost();
   hireBtn.textContent = `Hire minion (${cost} wood)`;
   hireBtn.disabled = state.wood < cost;
-  const smalls = state.minions.filter((m) => m.type === CONFIG.small).length;
-  mergeBtn.textContent = `Merge 2 small → big (${CONFIG.mergeCost})`;
-  mergeBtn.disabled = smalls < 2 || state.wood < CONFIG.mergeCost;
+  const pair = nextMergePair();
+  mergeBtn.textContent = pair ? `Merge Lv${pair[0].level} → Lv${pair[0].level + 1}` : 'Merge';
+  mergeBtn.disabled = !pair;
 }
 
 // ---- Loop ------------------------------------------------------------------
