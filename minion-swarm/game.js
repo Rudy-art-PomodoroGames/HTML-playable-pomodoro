@@ -6,7 +6,7 @@
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 11;
+const BUILD = 12;
 
 // ---- Tunable values (all in one place) ------------------------------------
 
@@ -55,6 +55,14 @@ const CONFIG = {
   guide: {
     speed: 120,             // how fast the swarm heads to a tapped point
     showMarker: true,       // draw a ring where the player tapped
+  },
+
+  bounce: {
+    show: true,
+    amount: 0.06,           // squash & stretch strength (0.06 = 6% wider/taller)
+    stepLength: 14,         // pixels travelled per bounce
+    minSpeed: 15,           // below this speed a minion counts as standing still
+    fade: 8,                // how fast the bounce fades in and out
   },
 
   shake: {
@@ -123,6 +131,11 @@ const CONFIG_HELP = {
   'zone.bigColor': 'Color of big resources.',
   'guide.speed': 'How fast the swarm heads to the point you tap, in pixels per second.',
   'guide.showMarker': 'Show a white ring where you tapped until the swarm gets there.',
+  'bounce.show': 'Minions squash and stretch while they move. Never while hitting.',
+  'bounce.amount': 'Strength of the squash and stretch. 0.06 = 6% wider then 6% taller. Keep it small for a subtle effect.',
+  'bounce.stepLength': 'Pixels a minion travels per bounce. Lower = faster bouncing.',
+  'bounce.minSpeed': 'Below this speed a minion counts as standing still and stops bouncing.',
+  'bounce.fade': 'How quickly the bounce fades in when a minion starts moving and out when it stops.',
   'shake.duration': 'How long a resource shakes after a hit, in seconds.',
   'shake.amount': 'How strongly a resource shakes after a hit, in pixels.',
   'hpText.show': 'Show the remaining HP number in the middle of each resource.',
@@ -237,6 +250,7 @@ function spawn(level, x, y) {
   const r = Math.random() * CONFIG.formationRadius;
   return {
     level, type: statsFor(level), x, y, vx: 0, vy: 0, cd: 0, target: null,
+    attacking: false, bounceAmp: 0, bouncePhase: Math.random() * Math.PI * 2,
     ox: Math.cos(a) * r, oy: Math.sin(a) * r, // resting spot around the leader
   };
 }
@@ -328,8 +342,16 @@ function updateMinion(m, dt, attackers) {
   m.x += m.vx * dt;
   m.y += m.vy * dt;
 
+  // Squash & stretch while moving, never while hitting.
+  const b = CONFIG.bounce;
+  const speedNow = Math.hypot(m.vx, m.vy);
+  m.attacking = !!m.target && distToRect(m.target, m.x, m.y) <= t.radius + 3;
+  const bouncing = b.show && !m.attacking && speedNow > b.minSpeed;
+  m.bounceAmp += ((bouncing ? 1 : 0) - m.bounceAmp) * Math.min(1, b.fade * dt);
+  if (b.stepLength > 0) m.bouncePhase += (speedNow * dt / b.stepLength) * Math.PI * 2;
+
   // Attack when touching the resource.
-  if (m.target && distToRect(m.target, m.x, m.y) <= t.radius + 3) {
+  if (m.attacking) {
     m.cd -= dt;
     if (m.cd <= 0) {
       m.cd = t.interval;
@@ -584,9 +606,14 @@ function draw() {
   }
 
   for (const m of state.minions) {
+    // Squash & stretch: wider when flatter, taller when narrower.
+    const k = CONFIG.bounce.amount * m.bounceAmp * Math.sin(m.bouncePhase);
+    ctx.save();
+    ctx.translate(m.x, m.y);
+    ctx.scale(1 + k, 1 - k);
     ctx.fillStyle = m.type.color;
     ctx.beginPath();
-    ctx.arc(m.x, m.y, m.type.radius, 0, Math.PI * 2);
+    ctx.arc(0, 0, m.type.radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = 'rgba(0,0,0,0.35)';
     ctx.lineWidth = 1.5;
@@ -596,9 +623,10 @@ function draw() {
       ctx.font = `bold ${Math.max(8, Math.round(m.type.radius * 1.1))}px system-ui, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(String(m.level), m.x, m.y + 1);
+      ctx.fillText(String(m.level), 0, 1);
       ctx.textBaseline = 'alphabetic';
     }
+    ctx.restore();
   }
 
   // Overlays: HP bars, HP numbers and damage numbers always draw on top of
