@@ -6,7 +6,7 @@
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 12;
+const BUILD = 13;
 
 // ---- Tunable values (all in one place) ------------------------------------
 
@@ -61,6 +61,7 @@ const CONFIG = {
     show: true,
     amount: 0.06,           // squash & stretch strength (0.06 = 6% wider/taller)
     stepLength: 14,         // pixels travelled per bounce
+    variation: 0.2,         // each minion's rhythm differs by up to ±20% so they don't bounce in sync
     minSpeed: 15,           // below this speed a minion counts as standing still
     fade: 8,                // how fast the bounce fades in and out
   },
@@ -134,6 +135,7 @@ const CONFIG_HELP = {
   'bounce.show': 'Minions squash and stretch while they move. Never while hitting.',
   'bounce.amount': 'Strength of the squash and stretch. 0.06 = 6% wider then 6% taller. Keep it small for a subtle effect.',
   'bounce.stepLength': 'Pixels a minion travels per bounce. Lower = faster bouncing.',
+  'bounce.variation': 'How different each minion\'s bounce rhythm is, so the swarm doesn\'t bounce in sync. 0 = all the same, 0.2 = each up to 20% faster or slower.',
   'bounce.minSpeed': 'Below this speed a minion counts as standing still and stops bouncing.',
   'bounce.fade': 'How quickly the bounce fades in when a minion starts moving and out when it stops.',
   'shake.duration': 'How long a resource shakes after a hit, in seconds.',
@@ -251,6 +253,7 @@ function spawn(level, x, y) {
   return {
     level, type: statsFor(level), x, y, vx: 0, vy: 0, cd: 0, target: null,
     attacking: false, bounceAmp: 0, bouncePhase: Math.random() * Math.PI * 2,
+    bounceRand: Math.random() * 2 - 1, // this minion's own rhythm offset
     ox: Math.cos(a) * r, oy: Math.sin(a) * r, // resting spot around the leader
   };
 }
@@ -348,7 +351,8 @@ function updateMinion(m, dt, attackers) {
   m.attacking = !!m.target && distToRect(m.target, m.x, m.y) <= t.radius + 3;
   const bouncing = b.show && !m.attacking && speedNow > b.minSpeed;
   m.bounceAmp += ((bouncing ? 1 : 0) - m.bounceAmp) * Math.min(1, b.fade * dt);
-  if (b.stepLength > 0) m.bouncePhase += (speedNow * dt / b.stepLength) * Math.PI * 2;
+  const rhythm = 1 + m.bounceRand * b.variation;
+  if (b.stepLength > 0) m.bouncePhase += (speedNow * dt * rhythm / b.stepLength) * Math.PI * 2;
 
   // Attack when touching the resource.
   if (m.attacking) {
