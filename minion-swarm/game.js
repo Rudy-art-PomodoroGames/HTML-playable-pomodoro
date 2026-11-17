@@ -6,7 +6,7 @@
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 13;
+const BUILD = 14;
 
 // ---- Tunable values (all in one place) ------------------------------------
 
@@ -59,7 +59,7 @@ const CONFIG = {
 
   bounce: {
     show: true,
-    amount: 0.06,           // squash & stretch strength (0.06 = 6% wider/taller)
+    amount: 0.1,            // squash & stretch strength (0.1 = 10% wider/taller)
     stepLength: 14,         // pixels travelled per bounce
     variation: 0.2,         // each minion's rhythm differs by up to ±20% so they don't bounce in sync
     minSpeed: 15,           // below this speed a minion counts as standing still
@@ -133,7 +133,7 @@ const CONFIG_HELP = {
   'guide.speed': 'How fast the swarm heads to the point you tap, in pixels per second.',
   'guide.showMarker': 'Show a white ring where you tapped until the swarm gets there.',
   'bounce.show': 'Minions squash and stretch while they move. Never while hitting.',
-  'bounce.amount': 'Strength of the squash and stretch. 0.06 = 6% wider then 6% taller. Keep it small for a subtle effect.',
+  'bounce.amount': 'Strength of the squash and stretch. 0.1 = 10% wider then 10% taller. Keep it small for a subtle effect.',
   'bounce.stepLength': 'Pixels a minion travels per bounce. Lower = faster bouncing.',
   'bounce.variation': 'How different each minion\'s bounce rhythm is, so the swarm doesn\'t bounce in sync. 0 = all the same, 0.2 = each up to 20% faster or slower.',
   'bounce.minSpeed': 'Below this speed a minion counts as standing still and stops bouncing.',
