@@ -6,7 +6,7 @@
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 15;
+const BUILD = 16;
 
 // ---- Tunable values (all in one place) ------------------------------------
 
@@ -50,6 +50,7 @@ const CONFIG = {
     smallValue: 2, bigValue: 6,     // wood in zone 1
     valueMultPerZone: 1.3,          // wood × this for each zone after
     smallColor: '#b5552f', bigColor: '#7d2a1c',
+    colliderScale: 1,               // collider circle diameter = resource size × this
   },
 
   guide: {
@@ -89,6 +90,7 @@ const CONFIG = {
 
   clearDelay: 1.2,          // seconds between zones
   showLeader: false,        // debug: draw the invisible leader
+  showColliders: false,     // debug: draw resource collider circles
 };
 
 // Explanations shown when tapping a setting's name in the ⚙ panel.
@@ -151,6 +153,8 @@ const CONFIG_HELP = {
   'damagePopup.fontSize': 'Text size of damage numbers.',
   'damagePopup.color': 'Color of damage numbers.',
   clearDelay: 'Pause in seconds between clearing a zone and the next zone appearing.',
+  'zone.colliderScale': 'Size of the round collider minions bump into and hit, compared to the resource art. 1 = a circle touching the art\'s edges, 0.8 = smaller so minions overlap the art a bit, 1.2 = bigger.',
+  showColliders: 'Debug: draw each resource\'s collider circle in cyan, to check it against your art.',
   showLeader: 'Debug: show the invisible leader the swarm follows, as a small white circle.',
 };
 
@@ -193,15 +197,22 @@ function statsFor(level) {
 
 // ---- Geometry helpers ------------------------------------------------------
 
+// Resources collide as a circle that fits inside the art (diameter = size),
+// scaled by zone.colliderScale. Works for round art and is a close enough
+// fit for square art.
+const resRadius = (r) => (r.size / 2) * CONFIG.zone.colliderScale;
+
+// Closest point of the resource's collider circle (the point itself when inside).
 function closestPoint(r, px, py) {
-  const h = r.size / 2;
-  return {
-    x: Math.max(r.x - h, Math.min(px, r.x + h)),
-    y: Math.max(r.y - h, Math.min(py, r.y + h)),
-  };
+  const dx = px - r.x;
+  const dy = py - r.y;
+  const d = Math.hypot(dx, dy);
+  const R = resRadius(r);
+  if (d <= R) return { x: px, y: py };
+  return { x: r.x + (dx / d) * R, y: r.y + (dy / d) * R };
 }
 
-function distToRect(r, px, py) {
+function distToResource(r, px, py) {
   const c = closestPoint(r, px, py);
   return Math.hypot(px - c.x, py - c.y);
 }
@@ -290,7 +301,7 @@ function nextMergePair() {
 }
 
 function inSwarmRange(r) {
-  return !r.done && distToRect(r, state.leader.x, state.leader.y) <= CONFIG.swarmRadius;
+  return !r.done && distToResource(r, state.leader.x, state.leader.y) <= CONFIG.swarmRadius;
 }
 
 function pickTarget(m, attackers) {
@@ -298,7 +309,7 @@ function pickTarget(m, attackers) {
   let bestScore = Infinity;
   for (const r of state.resources) {
     if (!inSwarmRange(r)) continue;
-    const score = distToRect(r, m.x, m.y) + (attackers.get(r) || 0) * CONFIG.crowdPenalty;
+    const score = distToResource(r, m.x, m.y) + (attackers.get(r) || 0) * CONFIG.crowdPenalty;
     if (score < bestScore) { bestScore = score; best = r; }
   }
   return best;
@@ -348,7 +359,7 @@ function updateMinion(m, dt, attackers) {
   // Squash & stretch while moving, never while hitting.
   const b = CONFIG.bounce;
   const speedNow = Math.hypot(m.vx, m.vy);
-  m.attacking = !!m.target && distToRect(m.target, m.x, m.y) <= t.radius + 3;
+  m.attacking = !!m.target && distToResource(m.target, m.x, m.y) <= t.radius + 3;
   const bouncing = b.show && !m.attacking && speedNow > b.minSpeed;
   m.bounceAmp += ((bouncing ? 1 : 0) - m.bounceAmp) * Math.min(1, b.fade * dt);
   const rhythm = 1 + m.bounceRand * b.variation;
@@ -400,22 +411,15 @@ function resolveCollisions() {
       const rad = m.type.radius;
       for (const r of state.resources) {
         if (r.done) continue;
-        const h = r.size / 2;
-        const c = closestPoint(r, m.x, m.y);
-        const dx = m.x - c.x;
-        const dy = m.y - c.y;
-        const d = Math.hypot(dx, dy);
-        if (d >= rad) continue;
-        if (d > 0) {
-          m.x += (dx / d) * (rad - d);
-          m.y += (dy / d) * (rad - d);
-        } else {
-          // Center is inside the square: push out along the shortest side.
-          const px = h - Math.abs(m.x - r.x);
-          const py = h - Math.abs(m.y - r.y);
-          if (px < py) m.x = r.x + Math.sign(m.x - r.x || 1) * (h + rad);
-          else m.y = r.y + Math.sign(m.y - r.y || 1) * (h + rad);
-        }
+        // Circle vs circle: push the minion out of the resource's collider.
+        let dx = m.x - r.x;
+        let dy = m.y - r.y;
+        let d = Math.hypot(dx, dy);
+        const min = resRadius(r) + rad;
+        if (d >= min) continue;
+        if (d === 0) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d = Math.hypot(dx, dy); }
+        m.x = r.x + (dx / d) * min;
+        m.y = r.y + (dy / d) * min;
       }
       m.x = Math.max(rad, Math.min(W - rad, m.x));
       m.y = Math.max(rad, Math.min(H - rad, m.y));
@@ -444,7 +448,7 @@ function updateLeader(dt) {
     L.x = g.x;
     L.y = g.y;
     state.guide = null;
-    L.target = state.resources.find((r) => !r.done && distToRect(r, g.x, g.y) === 0) || null;
+    L.target = state.resources.find((r) => !r.done && distToResource(r, g.x, g.y) === 0) || null;
     return;
   }
 
@@ -453,7 +457,7 @@ function updateLeader(dt) {
     let bestD = Infinity;
     for (const r of state.resources) {
       if (r.done) continue;
-      const d = distToRect(r, L.x, L.y);
+      const d = distToResource(r, L.x, L.y);
       if (d < bestD) { bestD = d; best = r; }
     }
     L.target = best;
@@ -742,6 +746,16 @@ function draw() {
     if (img) ctx.drawImage(img, state.guide.x - 14, state.guide.y - 14, 28, 28);
     else drawMarkerShape(ctx, state.guide.x, state.guide.y);
     ctx.globalAlpha = 1;
+  }
+
+  if (CONFIG.showColliders) {
+    ctx.strokeStyle = '#00e5ff';
+    ctx.lineWidth = 1.5;
+    for (const r of state.resources) {
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, resRadius(r), 0, Math.PI * 2);
+      ctx.stroke();
+    }
   }
 
   if (CONFIG.showLeader) {
