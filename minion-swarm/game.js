@@ -6,7 +6,7 @@
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 14;
+const BUILD = 15;
 
 // ---- Tunable values (all in one place) ------------------------------------
 
@@ -584,11 +584,81 @@ canvas.addEventListener('pointerdown', (e) => {
   state.leader.target = null;
 });
 
+// ---- Assets ------------------------------------------------------------------
+// Every image the game uses. Each one falls back to the built-in drawn shape
+// below when there's no PNG (your upload in 🎨, or assets/<key>.png).
+
+const BACKGROUND_COLOR = '#1f3a24';
+const MINION_ART_LEVELS = 8; // minion_lv1..lv8; higher levels reuse them in a cycle
+
+const gameFont = () => (window.AssetPanel ? AssetPanel.fontStack : 'system-ui, sans-serif');
+
+function drawMinionShape(c, radius, color) {
+  c.fillStyle = color;
+  c.beginPath();
+  c.arc(0, 0, radius, 0, Math.PI * 2);
+  c.fill();
+  c.strokeStyle = 'rgba(0,0,0,0.35)';
+  c.lineWidth = 1.5;
+  c.stroke();
+}
+
+function drawLevelNumber(c, radius, level) {
+  c.fillStyle = '#1b2a1e';
+  c.font = `bold ${Math.max(8, Math.round(radius * 1.1))}px ${gameFont()}`;
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  c.fillText(String(level), 0, 1);
+  c.textBaseline = 'alphabetic';
+}
+
+function drawResourceShape(c, x, y, size, color) {
+  const h = size / 2;
+  c.fillStyle = color;
+  c.fillRect(x - h, y - h, size, size);
+  c.strokeStyle = 'rgba(0,0,0,0.4)';
+  c.lineWidth = 2;
+  c.strokeRect(x - h, y - h, size, size);
+}
+
+function drawMarkerShape(c, x, y) {
+  c.strokeStyle = '#ffffff';
+  c.lineWidth = 2;
+  c.beginPath();
+  c.arc(x, y, 14, 0, Math.PI * 2);
+  c.stroke();
+}
+
+const minionArtKey = (level) => `minion_lv${((level - 1) % MINION_ART_LEVELS) + 1}`;
+
+const ASSETS = [
+  { key: 'background', label: 'Background', size: '720×1120 (fills the play area)',
+    draw: (c, w, h) => { c.fillStyle = BACKGROUND_COLOR; c.fillRect(0, 0, w, h); } },
+  ...Array.from({ length: MINION_ART_LEVELS }, (_, i) => ({
+    key: `minion_lv${i + 1}`, label: `Minion level ${i + 1}`, size: '128×128 (square, transparent)',
+    draw: (c, w, h) => {
+      const level = i + 1;
+      c.translate(w / 2, h / 2);
+      drawMinionShape(c, w * 0.38, CONFIG.minion.colors[i % CONFIG.minion.colors.length]);
+      if (level > 1) drawLevelNumber(c, w * 0.38, level);
+    },
+  })),
+  { key: 'resource_small', label: 'Small resource (bush)', size: '64×64 (square)',
+    draw: (c, w, h) => drawResourceShape(c, w / 2, h / 2, w * 0.6, CONFIG.zone.smallColor) },
+  { key: 'resource_big', label: 'Big resource (tree)', size: '128×128 (square)',
+    draw: (c, w, h) => drawResourceShape(c, w / 2, h / 2, w * 0.8, CONFIG.zone.bigColor) },
+  { key: 'tap_marker', label: 'Tap marker', size: '64×64 (square, transparent)',
+    draw: (c, w, h) => { c.fillStyle = 'rgba(0,0,0,0.25)'; c.fillRect(0, 0, w, h); drawMarkerShape(c, w / 2, h / 2); } },
+];
+
+const art = (key) => (window.AssetPanel ? AssetPanel.image(key) : null);
+
 // ---- Render ----------------------------------------------------------------
 
 function draw() {
-  ctx.fillStyle = '#1f3a24';
-  ctx.fillRect(0, 0, W, H);
+  const bg = art('background');
+  if (bg) ctx.drawImage(bg, 0, 0, W, H);
+  else { ctx.fillStyle = BACKGROUND_COLOR; ctx.fillRect(0, 0, W, H); }
 
   for (const r of state.resources) {
     const h = r.size / 2;
@@ -600,11 +670,9 @@ function draw() {
     }
     const x = r.x + sx;
     const y = r.y + sy;
-    ctx.fillStyle = r.big ? CONFIG.zone.bigColor : CONFIG.zone.smallColor;
-    ctx.fillRect(x - h, y - h, r.size, r.size);
-    ctx.strokeStyle = 'rgba(0,0,0,0.4)';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x - h, y - h, r.size, r.size);
+    const img = art(r.big ? 'resource_big' : 'resource_small');
+    if (img) ctx.drawImage(img, x - h, y - h, r.size, r.size);
+    else drawResourceShape(ctx, x, y, r.size, r.big ? CONFIG.zone.bigColor : CONFIG.zone.smallColor);
     r.drawX = x; // shaken position, reused by the overlay pass
     r.drawY = y;
   }
@@ -615,21 +683,11 @@ function draw() {
     ctx.save();
     ctx.translate(m.x, m.y);
     ctx.scale(1 + k, 1 - k);
-    ctx.fillStyle = m.type.color;
-    ctx.beginPath();
-    ctx.arc(0, 0, m.type.radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    if (CONFIG.minion.showLevel && m.level > 1) {
-      ctx.fillStyle = '#1b2a1e';
-      ctx.font = `bold ${Math.max(8, Math.round(m.type.radius * 1.1))}px system-ui, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(String(m.level), 0, 1);
-      ctx.textBaseline = 'alphabetic';
-    }
+    const img = art(minionArtKey(m.level));
+    const rad = m.type.radius;
+    if (img) ctx.drawImage(img, -rad, -rad, rad * 2, rad * 2);
+    else drawMinionShape(ctx, rad, m.type.color);
+    if (CONFIG.minion.showLevel && m.level > 1) drawLevelNumber(ctx, rad, m.level);
     ctx.restore();
   }
 
@@ -648,7 +706,7 @@ function draw() {
     if (CONFIG.hpText.show) {
       // Drawn at the shaken position so the number shakes with the resource.
       const size = r.big ? CONFIG.hpText.bigFontSize : CONFIG.hpText.smallFontSize;
-      ctx.font = `bold ${size}px system-ui, sans-serif`;
+      ctx.font = `bold ${size}px ${gameFont()}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.lineWidth = 3;
@@ -666,7 +724,7 @@ function draw() {
     const k = Math.min(1, p.age / pc.duration);
     const pop = 1 + (pc.popScale - 1) * Math.max(0, 1 - p.age / 0.12);
     ctx.globalAlpha = 1 - k;
-    ctx.font = `bold ${Math.round(pc.fontSize * pop)}px system-ui, sans-serif`;
+    ctx.font = `bold ${Math.round(pc.fontSize * pop)}px ${gameFont()}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.lineWidth = 3;
@@ -680,11 +738,9 @@ function draw() {
 
   if (state.guide && CONFIG.guide.showMarker) {
     ctx.globalAlpha = 0.7;
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(state.guide.x, state.guide.y, 14, 0, Math.PI * 2);
-    ctx.stroke();
+    const img = art('tap_marker');
+    if (img) ctx.drawImage(img, state.guide.x - 14, state.guide.y - 14, 28, 28);
+    else drawMarkerShape(ctx, state.guide.x, state.guide.y);
     ctx.globalAlpha = 1;
   }
 
@@ -696,7 +752,7 @@ function draw() {
   }
 
   ctx.fillStyle = '#e8f5ea';
-  ctx.font = 'bold 16px system-ui, sans-serif';
+  ctx.font = `bold 16px ${gameFont()}`;
   ctx.textAlign = 'left';
   ctx.fillText(`Zone ${state.zone + 1}`, 54, 24); // leaves room for the ⚙ button
   ctx.fillText(`Wood ${Math.floor(state.wood)}`, 54, 46);
@@ -704,7 +760,7 @@ function draw() {
   ctx.fillText(`Minions ${state.minions.length}`, W - 12, 24);
 
   ctx.globalAlpha = 0.4;
-  ctx.font = '11px system-ui, sans-serif';
+  ctx.font = `11px ${gameFont()}`;
   ctx.textAlign = 'right';
   ctx.fillText(`build ${BUILD}`, W - 8, H - 8);
   ctx.globalAlpha = 1;
@@ -712,7 +768,7 @@ function draw() {
   if (state.flashT > 0) {
     ctx.globalAlpha = Math.min(1, state.flashT);
     ctx.textAlign = 'center';
-    ctx.font = 'bold 26px system-ui, sans-serif';
+    ctx.font = `bold 26px ${gameFont()}`;
     ctx.fillText(state.flash, W / 2, H / 2);
     ctx.globalAlpha = 1;
   }
@@ -750,6 +806,20 @@ if (window.SettingsPanel) {
     help: CONFIG_HELP,
     mount: canvas.parentElement,
     onRestart: restart,
+    onToggle: (open) => { state.paused = open; },
+  });
+}
+
+// Asset panel (🎨): replace any image or the font. Falls back to the drawn shapes.
+if (window.AssetPanel) {
+  AssetPanel.init({
+    storageKey: 'minion-swarm.assets',
+    basePath: 'assets/',
+    mount: canvas.parentElement,
+    uploadUrl: 'https://github.com/Rudy-art-PomodoroGames/HTML-playable-pomodoro/upload/main/minion-swarm/assets',
+    images: ASSETS,
+    font: { family: 'GameFont', fallback: 'system-ui, sans-serif' },
+    onFontChange: (stack) => document.documentElement.style.setProperty('--game-font', stack),
     onToggle: (open) => { state.paused = open; },
   });
 }

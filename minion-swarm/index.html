@@ -7,7 +7,7 @@
   <title>Minion Swarm</title>
   <style>
     :root { color-scheme: dark; }
-    html, body { margin: 0; height: 100%; background: #0f1a12; font-family: system-ui, sans-serif; color: #e8f5ea; }
+    html, body { margin: 0; height: 100%; background: #0f1a12; font-family: var(--game-font, system-ui, sans-serif); color: #e8f5ea; }
     body { display: flex; flex-direction: column; align-items: center; justify-content: center; }
     /* Game width: fill the phone width, but leave room for the buttons below (360x560 canvas). */
     :root { --w: min(calc(100vw - 32px), calc((100vh - 110px) * 0.643)); }
@@ -29,7 +29,8 @@
     <button id="hire">Hire minion</button>
     <button id="merge">Merge</button>
   </div>
-  <script src="../shared/settings-panel.js?v=14"></script>
-  <script src="game.js?v=14"></script>
+  <script src="../shared/settings-panel.js?v=15"></script>
+  <script src="../shared/asset-panel.js?v=15"></script>
+  <script src="game.js?v=15"></script>
 </body>
 </html>

@@ -6,7 +6,7 @@ One repo, one folder per playable. Shared code goes in `shared/`.
 
 ```
 html-playable-pomodoro/
-├── shared/            # reusable code (input, zones, ad SDK wrapper, ...)
+├── shared/            # reusable code: settings-panel.js (⚙ tuning), asset-panel.js (🎨 art & font)
 ├── minion-swarm/      # playable: open index.html in a browser
 └── README.md
 ```
