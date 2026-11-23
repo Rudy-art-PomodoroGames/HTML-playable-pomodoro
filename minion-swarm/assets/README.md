@@ -13,7 +13,7 @@ game's built-in drawn shape (or the default font), so the game never breaks.
 | `resource_small.webp` / `.png` | Small resource (bush) | 64×64 |
 | `resource_big.webp` / `.png` | Big resource (tree) | 128×128 |
 | `tap_marker.webp` / `.png` | Marker shown where the player taps | 64×64, transparent |
-| `font.woff2` (or `.woff`, `.ttf`, `.otf`) | Font for all game text | — |
+| `Nunito-VariableFont_wght.ttf` (or `font.woff2` / `.woff` / `.ttf` / `.otf`) | Font for all game text. A variable font lets 🎨 → Game font → Weight (same as ⚙ → textWeight) go from thin to extra thick | — |
 
 Images can be WebP or PNG (WebP is usually 30–50% smaller). If both exist for the same
 name, the WebP is used. Keep files small: ad networks often cap a playable at 2–5 MB in total.

@@ -10,7 +10,9 @@
 //
 // Usage:
 //   AssetPanel.init({ storageKey, basePath: 'assets/', mount, uploadUrl,
-//     onToggle, onFontChange, font: { family, fallback },
+//     onToggle, onFontChange, font: { family, fallback, files?, weight? },
+//     (files: font file names to look for in assets/ before font.*;
+//      weight: { get(), set(v), min, max, step } shows a weight slider on the font row)
 //     images: [{ key, label, size, draw(ctx, w, h), parent?, group? }] });
 //     (parent: key of the image this one is listed under, folded behind a
 //      "▸ <group>" toggle on that image's row)
@@ -110,6 +112,9 @@
     .ap-row.ap-sub { padding-left: 20px; background: rgba(0,0,0,0.15); }
     .ap-row.ap-sub .ap-thumb { width: 44px; height: 44px; }
     .ap-actions .ap-group { background: #24382b; color: #cfe8d4; }
+    .ap-weight { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; font-weight: 600; }
+    .ap-weight span { min-width: 74px; }
+    .ap-weight input { flex: 1; min-width: 0; accent-color: #7bd389; }
     .ap-thumb { width: 56px; height: 56px; flex: none; border-radius: 8px; display: flex; align-items: center; justify-content: center;
       background: repeating-conic-gradient(#2a3a2e 0% 25%, #223026 0% 50%) 50% / 12px 12px; overflow: hidden; }
     .ap-thumb img, .ap-thumb canvas { max-width: 100%; max-height: 100%; }
@@ -162,7 +167,9 @@
       fontEntry.face = null;
       if (blob) {
         try {
-          const face = new FontFace(font.family, await blob.arrayBuffer());
+          // Weight range 1–1000: a variable font then gives every weight the
+          // game asks for; a single-weight font is used as is for all of them.
+          const face = new FontFace(font.family, await blob.arrayBuffer(), { weight: '1 1000' });
           await face.load();
           document.fonts.add(face);
           Object.assign(fontEntry, { source, blob, name, face });
@@ -177,10 +184,13 @@
       return false;
     }
 
+    // Looks for the game's own font file names first (font.files), then font.woff2 / .woff / .ttf / .otf.
+    const fontNames = () => [...((font && font.files) || []), ...FONT_EXTS.map((ext) => `font.${ext}`)];
+
     async function loadDefaultFont() {
-      for (const ext of FONT_EXTS) {
-        const blob = await fetchBlob(`${basePath}font.${ext}`);
-        if (blob && await useFont(blob, 'repo', `font.${ext}`)) return;
+      for (const name of fontNames()) {
+        const blob = await fetchBlob(`${basePath}${name}`);
+        if (blob && await useFont(blob, 'repo', name)) return;
       }
       await useFont(null);
     }
@@ -354,13 +364,38 @@
       }
     }
 
+    // Weight slider for the font row; font.weight = { get(), set(v), min, max, step }.
+    function weightControl(sample) {
+      const w = font.weight;
+      const wrap = document.createElement('label');
+      wrap.className = 'ap-weight';
+      const text = document.createElement('span');
+      const input = document.createElement('input');
+      input.type = 'range';
+      input.min = w.min || 100;
+      input.max = w.max || 1000;
+      input.step = w.step || 50;
+      input.value = w.get();
+      const show = () => { text.textContent = `Weight ${input.value}`; };
+      show();
+      input.addEventListener('input', () => {
+        w.set(Number(input.value));
+        sample.style.fontWeight = input.value;
+        show();
+      });
+      wrap.append(text, input);
+      return wrap;
+    }
+
     function fontRow() {
       if (font) {
         const sample = document.createElement('div');
         sample.className = 'ap-font-sample';
         sample.style.fontFamily = api.fontStack;
+        if (font.weight) sample.style.fontWeight = font.weight.get();
         sample.textContent = 'Aa';
-        const fileName = fontEntry.name && fontEntry.source === 'repo' ? fontEntry.name : 'font.woff2 / .woff / .ttf / .otf';
+        const fileName = fontEntry.name && fontEntry.source === 'repo' ? fontEntry.name
+          : ((font.files && font.files[0]) || 'font.woff2 / .woff / .ttf / .otf');
         const details = fontEntry.blob ? `${sizeText(fontEntry.blob.size)} · used for all text` : 'System font · used for all text';
         const actions = [
           fileButton('Replace (font)', '.woff2,.woff,.ttf,.otf,font/woff2,font/woff,font/ttf,font/otf', async (file) => {
@@ -370,7 +405,8 @@
             render();
           }),
         ];
-        if (fontEntry.blob) actions.push(actionButton('Download', () => download(fontEntry.blob, `font.${extOf(fontEntry.name) || 'woff2'}`)));
+        if (fontEntry.blob) actions.push(actionButton('Download', () => download(fontEntry.blob,
+          fontEntry.source === 'repo' ? fontEntry.name : `font.${extOf(fontEntry.name) || 'woff2'}`)));
         if (fontEntry.source === 'local') {
           actions.push(actionButton('Reset', async () => {
             await dbDel(db, dbKey('__font'));
@@ -379,6 +415,7 @@
           }));
         }
         row(sample, 'Game font', fileName, fontEntry.source, details, actions);
+        if (font.weight) body.lastChild.querySelector('.ap-info').appendChild(weightControl(sample));
       }
     }
   }

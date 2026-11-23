@@ -6,6 +6,7 @@
 // Usage:
 //   SettingsPanel.init({ config: CONFIG, storageKey: 'my-game.config',
 //                        mount: stageElement, onRestart, onToggle });
+//   SettingsPanel.save()   // after changing CONFIG from elsewhere, keep it saved
 
 (function () {
   const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -85,6 +86,8 @@
   function init({ config, storageKey, mount, onRestart, onToggle, help = {} }) {
     const defaults = clone(config);
     assignIn(config, load(storageKey));
+    // Lets other panels (e.g. 🎨 font weight) change a value and keep it saved.
+    window.SettingsPanel.save = () => save(storageKey, diff(config, defaults));
 
     const style = document.createElement('style');
     style.textContent = CSS;
@@ -234,5 +237,5 @@
     });
   }
 
-  window.SettingsPanel = { init };
+  window.SettingsPanel = { init, save: () => {} };
 })();

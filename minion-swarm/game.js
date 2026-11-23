@@ -6,7 +6,7 @@
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 25;
+const BUILD = 26;
 
 // ---- Tunable values (all in one place) ------------------------------------
 
@@ -21,7 +21,7 @@ const CONFIG = {
     baseInterval: 0.4, intervalMultPerLevel: 1.2, // seconds between hits
     baseSpeed: 110, speedMultPerLevel: 0.93,
     baseRadius: 16.2, radiusPerLevel: 8.1,          // size keeps growing with every level
-    showLevel: true,                              // level number on minions of level 2+
+    showLevel: false,                             // level number on minions of level 2+
     colors: ['#7bd389', '#f2a65a', '#6ec6ff', '#c792ea', '#ff6b6b', '#ffd93d', '#ffffff', '#a0e7e5'],
   },
 
@@ -134,6 +134,8 @@ const CONFIG = {
 
   maxPixelRatio: 2,         // sharpness cap: real pixels per screen point (1 = old soft look, 3 = full iPhone sharpness, heavier)
 
+  textWeight: 700,          // thickness of all game text: 400 = regular, 700 = bold, up to 1000 (needs a variable font)
+
   clearDelay: 1.2,          // seconds between zones
   showLeader: false,        // debug: draw the invisible leader
   showColliders: false,     // debug: draw resource collider circles
@@ -220,6 +222,7 @@ const CONFIG_HELP = {
   'damagePopup.popScale': 'How big a damage number starts before shrinking to normal size. 1 = no pop.',
   'damagePopup.fontSize': 'Text size of damage numbers.',
   'damagePopup.color': 'Color of damage numbers.',
+  textWeight: 'Thickness of all game text (HUD, HP numbers, damage numbers). 400 = regular, 700 = bold, 900+ = extra thick. Fine steps (e.g. 850) need a variable font such as Nunito-VariableFont; a normal font only has its own weight.',
   clearDelay: 'Pause in seconds between clearing a zone and the next zone appearing.',
   'zone.colliderScale': 'Size of the round collider minions bump into and hit, compared to the resource art. 1 = a circle touching the art\'s edges, 0.8 = smaller so minions overlap the art a bit, 1.2 = bigger.',
   showColliders: 'Debug: draw each resource\'s collider circle in cyan, to check it against your art.',
@@ -721,7 +724,7 @@ function drawMinionShape(c, radius, color) {
 
 function drawLevelNumber(c, radius, level) {
   c.fillStyle = '#1b2a1e';
-  c.font = `bold ${Math.max(8, Math.round(radius * 1.1))}px ${gameFont()}`;
+  c.font = `${CONFIG.textWeight} ${Math.max(8, Math.round(radius * 1.1))}px ${gameFont()}`;
   c.textAlign = 'center';
   c.textBaseline = 'middle';
   c.fillText(String(level), 0, 1);
@@ -904,7 +907,7 @@ function draw() {
     if (CONFIG.hpText.show) {
       // Drawn at the shaken position so the number shakes with the resource.
       const size = r.big ? CONFIG.hpText.bigFontSize : CONFIG.hpText.smallFontSize;
-      ctx.font = `bold ${size}px ${gameFont()}`;
+      ctx.font = `${CONFIG.textWeight} ${size}px ${gameFont()}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.lineWidth = 3;
@@ -922,7 +925,7 @@ function draw() {
     const k = Math.min(1, p.age / pc.duration);
     const pop = 1 + (pc.popScale - 1) * Math.max(0, 1 - p.age / 0.12);
     ctx.globalAlpha = 1 - k;
-    ctx.font = `bold ${Math.round(pc.fontSize * pop)}px ${gameFont()}`;
+    ctx.font = `${CONFIG.textWeight} ${Math.round(pc.fontSize * pop)}px ${gameFont()}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.lineWidth = 3;
@@ -960,7 +963,7 @@ function draw() {
   }
 
   ctx.fillStyle = '#e8f5ea';
-  ctx.font = `bold 16px ${gameFont()}`;
+  ctx.font = `${CONFIG.textWeight} 16px ${gameFont()}`;
   ctx.textAlign = 'left';
   ctx.fillText(`Zone ${state.zone + 1}`, 54, 24); // leaves room for the ⚙ button
   ctx.fillText(`Wood ${Math.floor(state.wood)}`, 54, 46);
@@ -976,7 +979,7 @@ function draw() {
   if (state.flashT > 0) {
     ctx.globalAlpha = Math.min(1, state.flashT);
     ctx.textAlign = 'center';
-    ctx.font = `bold 26px ${gameFont()}`;
+    ctx.font = `${CONFIG.textWeight} 26px ${gameFont()}`;
     ctx.fillText(state.flash, W / 2, H / 2);
     ctx.globalAlpha = 1;
   }
@@ -1026,7 +1029,16 @@ if (window.AssetPanel) {
     mount: canvas.parentElement,
     uploadUrl: 'https://github.com/Rudy-art-PomodoroGames/HTML-playable-pomodoro/upload/main/minion-swarm/assets',
     images: ASSETS,
-    font: { family: 'GameFont', fallback: 'system-ui, sans-serif' },
+    font: {
+      family: 'GameFont', fallback: 'system-ui, sans-serif',
+      files: ['Nunito-VariableFont_wght.ttf'], // your font's own file name in assets/
+      // Weight slider in 🎨 → Game font; same value as ⚙ → textWeight.
+      weight: {
+        min: 200, max: 1000, step: 50,
+        get: () => CONFIG.textWeight,
+        set: (v) => { CONFIG.textWeight = v; if (window.SettingsPanel) SettingsPanel.save(); },
+      },
+    },
     onFontChange: (stack) => document.documentElement.style.setProperty('--game-font', stack),
     onToggle: (open) => { state.paused = open; },
   });
