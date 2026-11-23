@@ -6,7 +6,7 @@
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 20;
+const BUILD = 22;
 
 // ---- Tunable values (all in one place) ------------------------------------
 
@@ -20,7 +20,7 @@ const CONFIG = {
     baseDmg: 1, dmgMultPerLevel: 2.5,             // damage per hit (rounded)
     baseInterval: 0.4, intervalMultPerLevel: 1.2, // seconds between hits
     baseSpeed: 110, speedMultPerLevel: 0.93,
-    baseRadius: 12, radiusPerLevel: 6,            // size keeps growing with every level
+    baseRadius: 16.2, radiusPerLevel: 8.1,          // size keeps growing with every level
     showLevel: true,                              // level number on minions of level 2+
     colors: ['#7bd389', '#f2a65a', '#6ec6ff', '#c792ea', '#ff6b6b', '#ffd93d', '#ffffff', '#a0e7e5'],
   },
@@ -65,6 +65,23 @@ const CONFIG = {
     variation: 0.2,         // each minion's rhythm differs by up to ±20% so they don't bounce in sync
     minSpeed: 15,           // below this speed a minion counts as standing still
     fade: 8,                // how fast the bounce fades in and out
+  },
+
+  // Wobble: the minion rocks left and right from its feet while it walks,
+  // on top of the bounce (fades in and out with it).
+  wobble: {
+    show: true,
+    angle: 5,               // max tilt in degrees each side
+    perBounce: 0.5,         // tilt cycles per bounce; 0.5 = left on one step, right on the next
+  },
+
+  // Round shadow under each minion's feet. Doesn't wobble or bounce.
+  shadow: {
+    show: true,
+    opacity: 0.15,          // 0 = invisible, 1 = solid black
+    width: 0.7,             // shadow width × minion width
+    flatness: 0.45,         // height ÷ width; 1 = full circle, lower = flatter oval
+    offsetY: 0,             // move the shadow down (+) or up (−), × minion radius
   },
 
   facing: {
@@ -147,6 +164,14 @@ const CONFIG_HELP = {
   'bounce.variation': 'How different each minion\'s bounce rhythm is, so the swarm doesn\'t bounce in sync. 0 = all the same, 0.2 = each up to 20% faster or slower.',
   'bounce.minSpeed': 'Below this speed a minion counts as standing still and stops bouncing.',
   'bounce.fade': 'How quickly the bounce fades in when a minion starts moving and out when it stops.',
+  'wobble.show': 'While walking, minions rock left and right from the bottom center of their sprite, on top of the bounce.',
+  'wobble.angle': 'How far a minion tilts to each side while walking, in degrees.',
+  'shadow.show': 'Draw a soft round shadow under each minion. It stays still while the minion wobbles and bounces.',
+  'shadow.opacity': 'How dark the shadow is. 0 = invisible, 1 = solid black. The background shows through below 1.',
+  'shadow.width': 'Shadow width compared to the minion. 1 = as wide as the minion.',
+  'shadow.flatness': 'Shadow height divided by its width. 1 = a full circle, 0.35 = a flat oval like a shadow on the ground.',
+  'shadow.offsetY': 'Moves the shadow down (positive) or up (negative), in minion radii. 0 = centered on the minion\'s feet.',
+  'wobble.perBounce': 'Tilt cycles per bounce. 0.5 = tilts left on one step and right on the next. 1 = a full left-right on every bounce.',
   'facing.flip': 'Minions turn left or right to face the way they move, by mirroring their art. The level number is never mirrored.',
   'facing.artFacesRight': 'On: your minion art looks to the right. Off: it looks to the left. Set this to match your sprites so they don\'t walk backwards.',
   'facing.deadZone': 'Sideways speed (pixels per second) a minion needs before it turns. Higher = fewer turns when moving mostly up or down.',
@@ -658,6 +683,14 @@ function drawMarkerShape(c, x, y) {
   c.stroke();
 }
 
+// Solid black oval centered on 0,0; opacity is applied when drawing.
+function drawShadowShape(c, rx, ry) {
+  c.fillStyle = '#000';
+  c.beginPath();
+  c.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+  c.fill();
+}
+
 const minionArtKey = (level) => `minion_lv${((level - 1) % MINION_ART_LEVELS) + 1}`;
 
 const ASSETS = [
@@ -672,6 +705,8 @@ const ASSETS = [
       if (level > 1) drawLevelNumber(c, w * 0.38, level);
     },
   })),
+  { key: 'minion_shadow', label: 'Minion shadow', size: '128×128 (transparent, drawn see-through by shadow.opacity)',
+    draw: (c, w, h) => { c.translate(w / 2, h / 2); drawShadowShape(c, w / 2, h / 2); } },
   { key: 'resource_small', label: 'Small resource (bush)', size: '64×64 (square)',
     draw: (c, w, h) => drawResourceShape(c, w / 2, h / 2, w * 0.6, CONFIG.zone.smallColor) },
   { key: 'resource_big', label: 'Big resource (tree)', size: '128×128 (square)',
@@ -706,14 +741,38 @@ function draw() {
     r.drawY = y;
   }
 
+  // Shadows first, so no minion's shadow covers another minion.
+  const sh = CONFIG.shadow;
+  if (sh.show && sh.opacity > 0) {
+    const shImg = art('minion_shadow');
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, sh.opacity);
+    for (const m of state.minions) {
+      const rad = m.type.radius;
+      const rx = rad * sh.width;
+      const ry = rx * sh.flatness;
+      const y = m.y + rad + rad * sh.offsetY;
+      if (shImg) ctx.drawImage(shImg, m.x - rx, y - ry, rx * 2, ry * 2);
+      else { ctx.save(); ctx.translate(m.x, y); drawShadowShape(ctx, rx, ry); ctx.restore(); }
+    }
+    ctx.restore();
+  }
+
   for (const m of state.minions) {
     // Squash & stretch: wider when flatter, taller when narrower.
     const k = CONFIG.bounce.amount * m.bounceAmp * Math.sin(m.bouncePhase);
-    ctx.save();
-    ctx.translate(m.x, m.y);
-    ctx.scale(1 + k, 1 - k);
     const img = art(minionArtKey(m.level));
     const rad = m.type.radius;
+    ctx.save();
+    // Wobble: tilt around the bottom center of the sprite.
+    const w = CONFIG.wobble;
+    if (w.show && m.bounceAmp > 0.001) {
+      const tilt = (w.angle * Math.PI / 180) * m.bounceAmp * Math.sin(m.bouncePhase * w.perBounce);
+      ctx.translate(m.x, m.y + rad);
+      ctx.rotate(tilt);
+      ctx.translate(0, -rad);
+    } else ctx.translate(m.x, m.y);
+    ctx.scale(1 + k, 1 - k);
     // Mirror only the art, so the level number stays readable.
     const fc = CONFIG.facing;
     const mirror = fc.flip && m.face !== (fc.artFacesRight ? 1 : -1);
