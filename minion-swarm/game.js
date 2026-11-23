@@ -6,7 +6,7 @@
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 17;
+const BUILD = 18;
 
 // ---- Tunable values (all in one place) ------------------------------------
 
@@ -65,6 +65,13 @@ const CONFIG = {
     variation: 0.2,         // each minion's rhythm differs by up to ±20% so they don't bounce in sync
     minSpeed: 15,           // below this speed a minion counts as standing still
     fade: 8,                // how fast the bounce fades in and out
+  },
+
+  facing: {
+    flip: true,             // mirror the minion art so it faces the way it moves
+    artFacesRight: true,    // which way your minion art looks; off = it looks left
+    deadZone: 20,           // sideways speed (px/s) needed to turn, so minions don't flicker moving up/down
+    faceTargetWhenHitting: true, // while hitting, face the resource
   },
 
   shake: {
@@ -140,7 +147,11 @@ const CONFIG_HELP = {
   'bounce.variation': 'How different each minion\'s bounce rhythm is, so the swarm doesn\'t bounce in sync. 0 = all the same, 0.2 = each up to 20% faster or slower.',
   'bounce.minSpeed': 'Below this speed a minion counts as standing still and stops bouncing.',
   'bounce.fade': 'How quickly the bounce fades in when a minion starts moving and out when it stops.',
-  'shake.duration': 'How long a resource shakes after a hit, in seconds.',
+  'facing.flip': 'Minions turn left or right to face the way they move, by mirroring their art. The level number is never mirrored.',
+  'facing.artFacesRight': 'On: your minion art looks to the right. Off: it looks to the left. Set this to match your sprites so they don\'t walk backwards.',
+  'facing.deadZone': 'Sideways speed (pixels per second) a minion needs before it turns. Higher = fewer turns when moving mostly up or down.',
+  'facing.faceTargetWhenHitting': 'While hitting a resource, the minion faces it. Off: it keeps the direction it last moved in.',
+  'shake.duration':'How long a resource shakes after a hit, in seconds.',
   'shake.amount': 'How strongly a resource shakes after a hit, in pixels.',
   'hpText.show': 'Show the remaining HP number in the middle of each resource.',
   'hpText.smallFontSize': 'Text size of the HP number on small resources.',
@@ -263,7 +274,7 @@ function spawn(level, x, y) {
   const r = Math.random() * CONFIG.formationRadius;
   return {
     level, type: statsFor(level), x, y, vx: 0, vy: 0, cd: 0, target: null,
-    attacking: false, bounceAmp: 0, bouncePhase: Math.random() * Math.PI * 2,
+    attacking: false, face: 1, bounceAmp: 0, bouncePhase: Math.random() * Math.PI * 2,
     bounceRand: Math.random() * 2 - 1, // this minion's own rhythm offset
     ox: Math.cos(a) * r, oy: Math.sin(a) * r, // resting spot around the leader
   };
@@ -360,6 +371,15 @@ function updateMinion(m, dt, attackers) {
   const b = CONFIG.bounce;
   const speedNow = Math.hypot(m.vx, m.vy);
   m.attacking = !!m.target && distToResource(m.target, m.x, m.y) <= t.radius + 3;
+
+  // Facing: 1 = right, -1 = left. Turn only on clear sideways movement.
+  const f = CONFIG.facing;
+  if (m.attacking && f.faceTargetWhenHitting) {
+    const side = m.target.x - m.x;
+    if (Math.abs(side) > 2) m.face = Math.sign(side);
+  } else if (Math.abs(m.vx) > f.deadZone) {
+    m.face = Math.sign(m.vx);
+  }
   const bouncing = b.show && !m.attacking && speedNow > b.minSpeed;
   m.bounceAmp += ((bouncing ? 1 : 0) - m.bounceAmp) * Math.min(1, b.fade * dt);
   const rhythm = 1 + m.bounceRand * b.variation;
@@ -605,6 +625,11 @@ function drawMinionShape(c, radius, color) {
   c.strokeStyle = 'rgba(0,0,0,0.35)';
   c.lineWidth = 1.5;
   c.stroke();
+  // Eye on the right, so the default art shows which way it faces.
+  c.fillStyle = '#1b2a1e';
+  c.beginPath();
+  c.arc(radius * 0.5, -radius * 0.35, Math.max(1.2, radius * 0.18), 0, Math.PI * 2);
+  c.fill();
 }
 
 function drawLevelNumber(c, radius, level) {
@@ -689,8 +714,13 @@ function draw() {
     ctx.scale(1 + k, 1 - k);
     const img = art(minionArtKey(m.level));
     const rad = m.type.radius;
+    // Mirror only the art, so the level number stays readable.
+    const fc = CONFIG.facing;
+    const mirror = fc.flip && m.face !== (fc.artFacesRight ? 1 : -1);
+    if (mirror) { ctx.save(); ctx.scale(-1, 1); }
     if (img) ctx.drawImage(img, -rad, -rad, rad * 2, rad * 2);
     else drawMinionShape(ctx, rad, m.type.color);
+    if (mirror) ctx.restore();
     if (CONFIG.minion.showLevel && m.level > 1) drawLevelNumber(ctx, rad, m.level);
     ctx.restore();
   }
