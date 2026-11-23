@@ -6,7 +6,7 @@
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 27;
+const BUILD = 28;
 
 // ---- Tunable values (all in one place) ------------------------------------
 
@@ -53,11 +53,11 @@ const CONFIG = {
   // A type with weight 0 never appears. hp and value are for zone 1.
   resources: {
     res1: { size: 20, hp: 3, value: 2, weight: 0.8, weightPerZone: -0.1, hpFontSize: 11, color: '#20315d', splashColor: '#4369d0' },
-    res2: { size: 40, hp: 12, value: 6, weight: 0.2, weightPerZone: 0.1, hpFontSize: 16, color: '#7d2a1c', splashColor: '#fc2d37' },
-    res3: { size: 28, hp: 6, value: 4, weight: 0, weightPerZone: 0, hpFontSize: 13, color: '#c9822b', splashColor: '#7d31b7' },
-    res4: { size: 32, hp: 8, value: 5, weight: 0, weightPerZone: 0, hpFontSize: 14, color: '#8f5fbf', splashColor: '#dd1f4b' },
-    res5: { size: 44, hp: 16, value: 8, weight: 0, weightPerZone: 0, hpFontSize: 16, color: '#3f8fbf', splashColor: '#fba805' },
-    res6: { size: 52, hp: 24, value: 12, weight: 0, weightPerZone: 0, hpFontSize: 18, color: '#bf3f6a', splashColor: '#f94a46' },
+    res2: { size: 40, hp: 12, value: 6, weight: 0.2, weightPerZone: 0.1, hpFontSize: 12, color: '#7d2a1c', splashColor: '#fc2d37' },
+    res3: { size: 28, hp: 6, value: 4, weight: 0.4, weightPerZone: 0, hpFontSize: 13, color: '#c9822b', splashColor: '#7d31b7' },
+    res4: { size: 32, hp: 8, value: 5, weight: 0.1, weightPerZone: 0, hpFontSize: 14, color: '#8f5fbf', splashColor: '#dd1f4b' },
+    res5: { size: 44, hp: 16, value: 8, weight: 0.1, weightPerZone: 0, hpFontSize: 16, color: '#3f8fbf', splashColor: '#fba805' },
+    res6: { size: 52, hp: 24, value: 12, weight: 0.1, weightPerZone: 0, hpFontSize: 18, color: '#bf3f6a', splashColor: '#f94a46' },
   },
 
   guide: {
@@ -160,10 +160,10 @@ const CONFIG = {
   // Drawing size of each image, × its normal size (1 = unchanged). Set from
   // the Scale slider on each row in 🎨. Only the picture changes, not colliders.
   artScale: {
-    minion_lv1: 1, minion_lv2: 1, minion_lv3: 1, minion_lv4: 1,
-    minion_lv5: 1, minion_lv6: 1, minion_lv7: 1, minion_lv8: 1,
+    minion_lv1: 1, minion_lv2: 0.85, minion_lv3: 1, minion_lv4: 1,
+    minion_lv5: 0.8, minion_lv6: 1, minion_lv7: 1, minion_lv8: 1,
     minion_eat: 1, minion_leg: 1, minion_shadow: 1,
-    resource_1: 1.4, resource_2: 1, resource_3: 1, resource_4: 1, resource_5: 1, resource_6: 1,
+    resource_1: 1.4, resource_2: 1, resource_3: 1, resource_4: 1, resource_5: 1.8, resource_6: 1,
     splash_drop: 1, tap_marker: 1,
   },
 
@@ -264,7 +264,10 @@ const CONFIG_HELP = {
 };
 
 for (const key of Object.keys(CONFIG.artScale)) {
-  CONFIG_HELP[`artScale.${key}`] = `Drawing size of the ${key} image, × its normal size. 1 = unchanged, 1.2 = 20% bigger. Only the picture, not the collider. Same as the Scale slider in 🎨.`;
+  CONFIG_HELP[`artScale.${key}`] = (key.startsWith('minion_lv')
+    ? `Drawing size of level ${key.slice(9)} minions, × normal: body, legs, shadow and eating frames together.`
+    : `Drawing size of the ${key} image, × its normal size.`) +
+    ' 1 = unchanged, 1.2 = 20% bigger. Not the collider. Same as the Scale slider in 🎨.';
 }
 
 // Help for every resource type (resources.res1 … res6), same text for each.
@@ -981,6 +984,8 @@ const ASSETS = [
 
 const art = (key) => (window.AssetPanel ? AssetPanel.image(key) : null);
 const artScale = (key) => (key in CONFIG.artScale ? Math.max(0, CONFIG.artScale[key]) : 1);
+// How big a minion is drawn: its size × its level's Scale. The collider keeps m.type.radius.
+const minionDrawRadius = (m) => m.type.radius * artScale(minionArtKey(m.level));
 
 // ---- Render ----------------------------------------------------------------
 
@@ -1025,7 +1030,7 @@ function draw() {
     ctx.save();
     ctx.globalAlpha = Math.min(1, sh.opacity);
     for (const m of state.minions) {
-      const rad = m.type.radius;
+      const rad = minionDrawRadius(m); // follows the level's Scale
       const rx = rad * sh.width * artScale('minion_shadow');
       const ry = rx * sh.flatness;
       const y = m.y + rad + rad * sh.offsetY;
@@ -1040,7 +1045,8 @@ function draw() {
     const k = CONFIG.bounce.amount * m.bounceAmp * Math.sin(m.bouncePhase);
     const eat = eatFrame(m);
     const img = eat ? null : art(minionArtKey(m.level));
-    const rad = m.type.radius;
+    // The level's Scale (🎨) sizes the whole minion: body, legs, wobble, eating frames.
+    const rad = minionDrawRadius(m);
     ctx.save();
     // Wobble: tilt around the bottom center of the sprite.
     const w = CONFIG.wobble;
@@ -1056,7 +1062,7 @@ function draw() {
     const fc = CONFIG.facing;
     const mirror = fc.flip && m.face !== (fc.artFacesRight ? 1 : -1);
     if (mirror) { ctx.save(); ctx.scale(-1, 1); }
-    const dr = rad * artScale(eat ? 'minion_eat' : minionArtKey(m.level)); // drawn radius
+    const dr = eat ? rad * artScale('minion_eat') : rad; // eating sheet can be scaled on top
     if (eat) ctx.drawImage(eat.img, eat.sx, 0, eat.sw, eat.sh, -dr, -dr, dr * 2, dr * 2);
     else if (img) ctx.drawImage(img, -dr, -dr, dr * 2, dr * 2);
     else drawMinionShape(ctx, dr, m.type.color);
