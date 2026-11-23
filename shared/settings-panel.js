@@ -49,10 +49,10 @@
   const CSS = `
     .sp-gear { position: absolute; top: 8px; left: 8px; width: 36px; height: 36px; border: 0; border-radius: 10px;
       background: rgba(0,0,0,0.35); color: #fff; font-size: 20px; line-height: 36px; padding: 0; cursor: pointer; z-index: 5; min-width: 0; }
-    .sp-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: none; align-items: center;
+    .sp-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.1); display: none; align-items: center;
       justify-content: center; z-index: 100; font-family: system-ui, sans-serif; }
     .sp-overlay.open { display: flex; }
-    .sp-card { background: #17241a; color: #e8f5ea; width: min(420px, calc(100vw - 32px)); max-height: 85vh;
+    .sp-card { background: rgba(23,36,26,0.85); text-shadow: 0 1px 2px rgba(0,0,0,0.6); color: #e8f5ea; width: min(420px, calc(100vw - 32px)); max-height: 85vh;
       border-radius: 14px; display: flex; flex-direction: column; overflow: hidden; }
     .sp-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; font-weight: 700; }
     .sp-body { overflow-y: auto; padding: 0 16px 8px; }

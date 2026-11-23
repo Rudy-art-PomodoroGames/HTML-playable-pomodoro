@@ -6,7 +6,7 @@
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 28;
+const BUILD = 29;
 
 // ---- Tunable values (all in one place) ------------------------------------
 

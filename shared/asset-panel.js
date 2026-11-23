@@ -101,10 +101,10 @@
   const CSS = `
     .ap-btn { position: absolute; top: 52px; left: 8px; width: 36px; height: 36px; border: 0; border-radius: 10px;
       background: rgba(0,0,0,0.35); color: #fff; font-size: 18px; line-height: 36px; padding: 0; cursor: pointer; z-index: 5; min-width: 0; }
-    .ap-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: none; align-items: center;
+    .ap-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.1); display: none; align-items: center;
       justify-content: center; z-index: 100; font-family: system-ui, sans-serif; }
     .ap-overlay.open { display: flex; }
-    .ap-card { background: #17241a; color: #e8f5ea; width: min(440px, calc(100vw - 32px)); max-height: 85vh;
+    .ap-card { background: rgba(23,36,26,0.85); text-shadow: 0 1px 2px rgba(0,0,0,0.6); color: #e8f5ea; width: min(440px, calc(100vw - 32px)); max-height: 85vh;
       border-radius: 14px; display: flex; flex-direction: column; overflow: hidden; }
     .ap-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; font-weight: 700; }
     .ap-head button { background: transparent; border: 0; color: #fff; font-size: 20px; cursor: pointer; padding: 0 4px; }
