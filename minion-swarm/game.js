@@ -6,7 +6,7 @@
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 30;
+const BUILD = 31;
 
 // ---- Tunable values (all in one place) ------------------------------------
 
@@ -54,7 +54,7 @@ const CONFIG = {
   resources: {
     res1: { size: 20, hp: 3, value: 2, weight: 0.8, weightPerZone: -0.1, hpFontSize: 11, color: '#20315d', splashColor: '#4369d0' },
     res2: { size: 40, hp: 12, value: 6, weight: 0.2, weightPerZone: 0.1, hpFontSize: 12, color: '#7d2a1c', splashColor: '#fc2d37' },
-    res3: { size: 28, hp: 20, value: 4, weight: 0.4, weightPerZone: 0, hpFontSize: 13, color: '#c9822b', splashColor: '#7d31b7' },
+    res3: { size: 28, hp: 50, value: 4, weight: 0.4, weightPerZone: 0, hpFontSize: 13, color: '#c9822b', splashColor: '#7d31b7' },
     res4: { size: 32, hp: 78, value: 5, weight: 0.1, weightPerZone: 0, hpFontSize: 14, color: '#8f5fbf', splashColor: '#dd1f4b' },
     res5: { size: 44, hp: 101, value: 8, weight: 0.1, weightPerZone: 0, hpFontSize: 16, color: '#3f8fbf', splashColor: '#fba805' },
     res6: { size: 52, hp: 150, value: 12, weight: 0.1, weightPerZone: 0, hpFontSize: 18, color: '#bf3f6a', splashColor: '#f94a46' },
