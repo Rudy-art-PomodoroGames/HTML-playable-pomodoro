@@ -6,7 +6,7 @@
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 18;
+const BUILD = 19;
 
 // ---- Tunable values (all in one place) ------------------------------------
 
@@ -20,7 +20,7 @@ const CONFIG = {
     baseDmg: 1, dmgMultPerLevel: 2.5,             // damage per hit (rounded)
     baseInterval: 0.4, intervalMultPerLevel: 1.2, // seconds between hits
     baseSpeed: 110, speedMultPerLevel: 0.93,
-    baseRadius: 6, radiusPerLevel: 3,             // size keeps growing with every level
+    baseRadius: 12, radiusPerLevel: 6,            // size keeps growing with every level
     showLevel: true,                              // level number on minions of level 2+
     colors: ['#7bd389', '#f2a65a', '#6ec6ff', '#c792ea', '#ff6b6b', '#ffd93d', '#ffffff', '#a0e7e5'],
   },
