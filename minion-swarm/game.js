@@ -6,7 +6,7 @@
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 29;
+const BUILD = 30;
 
 // ---- Tunable values (all in one place) ------------------------------------
 
@@ -54,10 +54,10 @@ const CONFIG = {
   resources: {
     res1: { size: 20, hp: 3, value: 2, weight: 0.8, weightPerZone: -0.1, hpFontSize: 11, color: '#20315d', splashColor: '#4369d0' },
     res2: { size: 40, hp: 12, value: 6, weight: 0.2, weightPerZone: 0.1, hpFontSize: 12, color: '#7d2a1c', splashColor: '#fc2d37' },
-    res3: { size: 28, hp: 6, value: 4, weight: 0.4, weightPerZone: 0, hpFontSize: 13, color: '#c9822b', splashColor: '#7d31b7' },
-    res4: { size: 32, hp: 8, value: 5, weight: 0.1, weightPerZone: 0, hpFontSize: 14, color: '#8f5fbf', splashColor: '#dd1f4b' },
-    res5: { size: 44, hp: 16, value: 8, weight: 0.1, weightPerZone: 0, hpFontSize: 16, color: '#3f8fbf', splashColor: '#fba805' },
-    res6: { size: 52, hp: 24, value: 12, weight: 0.1, weightPerZone: 0, hpFontSize: 18, color: '#bf3f6a', splashColor: '#f94a46' },
+    res3: { size: 28, hp: 20, value: 4, weight: 0.4, weightPerZone: 0, hpFontSize: 13, color: '#c9822b', splashColor: '#7d31b7' },
+    res4: { size: 32, hp: 78, value: 5, weight: 0.1, weightPerZone: 0, hpFontSize: 14, color: '#8f5fbf', splashColor: '#dd1f4b' },
+    res5: { size: 44, hp: 101, value: 8, weight: 0.1, weightPerZone: 0, hpFontSize: 16, color: '#3f8fbf', splashColor: '#fba805' },
+    res6: { size: 52, hp: 150, value: 12, weight: 0.1, weightPerZone: 0, hpFontSize: 18, color: '#bf3f6a', splashColor: '#f94a46' },
   },
 
   guide: {
@@ -160,10 +160,10 @@ const CONFIG = {
   // Drawing size of each image, × its normal size (1 = unchanged). Set from
   // the Scale slider on each row in 🎨. Only the picture changes, not colliders.
   artScale: {
-    minion_lv1: 1, minion_lv2: 0.85, minion_lv3: 1, minion_lv4: 1,
-    minion_lv5: 0.8, minion_lv6: 1, minion_lv7: 1, minion_lv8: 1,
+    minion_lv1: 1, minion_lv2: 0.85, minion_lv3: 0.75, minion_lv4: 0.65,
+    minion_lv5: 0.7, minion_lv6: 1, minion_lv7: 1, minion_lv8: 1,
     minion_eat: 1, minion_leg: 1, minion_shadow: 1,
-    resource_1: 1.4, resource_2: 1, resource_3: 1, resource_4: 1, resource_5: 1.8, resource_6: 1,
+    resource_1: 1.4, resource_2: 1.25, resource_3: 2.25, resource_4: 1.7, resource_5: 2.2, resource_6: 1.6,
     splash_drop: 1, tap_marker: 1,
   },
 
