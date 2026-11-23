@@ -5,7 +5,7 @@
 //
 // Where each asset comes from, first match wins:
 //   1. your upload in this browser
-//   2. a file in the game's assets/ folder (e.g. assets/minion_lv1.png)
+//   2. a file in the game's assets/ folder (assets/minion_lv1.webp, else .png)
 //   3. the built-in drawn shape (images) or the default font (font)
 //
 // Usage:
@@ -19,6 +19,11 @@
   const DB_NAME = 'playable-assets';
   const STORE = 'files';
   const FONT_EXTS = ['woff2', 'woff', 'ttf', 'otf'];
+  const IMAGE_EXTS = ['webp', 'png']; // looked up in this order in assets/
+
+  const isImageFile = (file) => ['image/png', 'image/webp'].includes(file.type) || /\.(png|webp)$/i.test(file.name);
+  // Extension of a loaded image, from its type or file name.
+  const imageExt = (e) => ((e.blob && e.blob.type === 'image/webp') || /\.webp$/i.test(e.name || '') ? 'webp' : 'png');
 
   // ---- Storage (IndexedDB; falls back to memory only if unavailable) ------
 
@@ -140,8 +145,11 @@
     }
 
     async function loadDefaultImage(key) {
-      const blob = await fetchBlob(`${basePath}${key}.png`);
-      await useImage(key, blob, 'repo', `${key}.png`);
+      for (const ext of IMAGE_EXTS) {
+        const blob = await fetchBlob(`${basePath}${key}.${ext}`);
+        if (blob && await useImage(key, blob, 'repo', `${key}.${ext}`)) return;
+      }
+      await useImage(key, null);
     }
 
     async function useFont(blob, source, name) {
@@ -293,14 +301,14 @@
         const details = (e.img ? `${e.img.naturalWidth}×${e.img.naturalHeight} px · ${sizeText(e.blob.size)}` : 'Drawn by the game') +
           (a.size ? ` · suggested ${a.size}` : '');
         const actions = [
-          fileButton('Replace (PNG)', 'image/png', async (file) => {
-            if (file.type !== 'image/png') { alert('Please choose a PNG file.'); return; }
+          fileButton('Replace (PNG/WebP)', 'image/png,image/webp,.png,.webp', async (file) => {
+            if (!isImageFile(file)) { alert('Please choose a PNG or WebP file.'); return; }
             if (!(await useImage(a.key, file, 'local', file.name))) { alert('This file could not be opened as an image.'); return; }
             await dbPut(db, dbKey(a.key), { blob: file, name: file.name });
             render();
           }),
         ];
-        if (e.blob) actions.push(actionButton('Download', () => download(e.blob, `${a.key}.png`)));
+        if (e.blob) actions.push(actionButton('Download', () => download(e.blob, `${a.key}.${imageExt(e)}`)));
         if (e.source === 'local') {
           actions.push(actionButton('Reset', async () => {
             await dbDel(db, dbKey(a.key));
@@ -308,7 +316,7 @@
             render();
           }));
         }
-        row(thumb, a.label, `${a.key}.png`, e.source, details, actions);
+        row(thumb, a.label, e.blob ? `${a.key}.${imageExt(e)}` : `${a.key}.webp / .png`, e.source, details, actions);
       }
 
       if (font) {

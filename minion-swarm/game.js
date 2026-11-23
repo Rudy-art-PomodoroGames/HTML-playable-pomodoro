@@ -6,7 +6,7 @@
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 16;
+const BUILD = 17;
 
 // ---- Tunable values (all in one place) ------------------------------------
 
@@ -590,7 +590,7 @@ canvas.addEventListener('pointerdown', (e) => {
 
 // ---- Assets ------------------------------------------------------------------
 // Every image the game uses. Each one falls back to the built-in drawn shape
-// below when there's no PNG (your upload in 🎨, or assets/<key>.png).
+// below when there's no image (your upload in 🎨, or assets/<key>.webp / .png).
 
 const BACKGROUND_COLOR = '#1f3a24';
 const MINION_ART_LEVELS = 8; // minion_lv1..lv8; higher levels reuse them in a cycle
