@@ -6,7 +6,7 @@
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 26;
+const BUILD = 27;
 
 // ---- Tunable values (all in one place) ------------------------------------
 
@@ -43,14 +43,21 @@ const CONFIG = {
 
   zone: {
     baseCount: 6, countPerZone: 2,
-    bigChanceBase: 0.2, bigChancePerZone: 0.1, bigChanceMax: 0.7,
-    smallSize: 20, bigSize: 40,
-    smallHp: 3, bigHp: 12,          // HP in zone 1
     hpMultPerZone: 1.35,            // HP × this for each zone after
-    smallValue: 2, bigValue: 6,     // wood in zone 1
     valueMultPerZone: 1.3,          // wood × this for each zone after
-    smallColor: '#b5552f', bigColor: '#7d2a1c',
     colliderScale: 1,               // collider circle diameter = resource size × this
+  },
+
+  // Resource types. Each spawned resource picks a type at random, in
+  // proportion to its weight: weight + weightPerZone × (zone − 1), never below 0.
+  // A type with weight 0 never appears. hp and value are for zone 1.
+  resources: {
+    res1: { size: 20, hp: 3, value: 2, weight: 0.8, weightPerZone: -0.1, hpFontSize: 11, color: '#20315d', splashColor: '#4369d0' },
+    res2: { size: 40, hp: 12, value: 6, weight: 0.2, weightPerZone: 0.1, hpFontSize: 16, color: '#7d2a1c', splashColor: '#fc2d37' },
+    res3: { size: 28, hp: 6, value: 4, weight: 0, weightPerZone: 0, hpFontSize: 13, color: '#c9822b', splashColor: '#7d31b7' },
+    res4: { size: 32, hp: 8, value: 5, weight: 0, weightPerZone: 0, hpFontSize: 14, color: '#8f5fbf', splashColor: '#dd1f4b' },
+    res5: { size: 44, hp: 16, value: 8, weight: 0, weightPerZone: 0, hpFontSize: 16, color: '#3f8fbf', splashColor: '#fba805' },
+    res6: { size: 52, hp: 24, value: 12, weight: 0, weightPerZone: 0, hpFontSize: 18, color: '#bf3f6a', splashColor: '#f94a46' },
   },
 
   guide: {
@@ -118,9 +125,25 @@ const CONFIG = {
 
   hpText: {
     show: true,
-    smallFontSize: 11,
-    bigFontSize: 16,
-    color: '#ffffff',
+    color: '#ffffff',               // text size is per resource type (resources.resN.hpFontSize)
+  },
+
+  // Juice splash on every bite: drops burst out, fall and fade. Color per
+  // resource type (resources.resN.splashColor).
+  splash: {
+    show: true,
+    count: 6,               // drops per bite
+    countRandom: 0.3,       // ± share of random count (0.3 = 6 ±30%)
+    speed: 70,              // how fast drops fly out (px/s)
+    speedRandom: 0.5,       // ± share of random speed
+    upKick: 50,             // extra upward push so it splashes up, then falls
+    gravity: 300,           // pull down (px/s²)
+    size: 3.5,              // drop radius in pixels
+    sizeRandom: 0.4,        // ± share of random size
+    shrink: 0.6,            // how much drops shrink over their life (0 = not at all, 1 = to nothing)
+    life: 0.45,             // seconds a drop lives (±25%)
+    spin: 6,                // max spin (radians/s), shows when you use a drop image
+    tintImage: true,        // color your drop image with each resource's splashColor (draw it white/grey)
   },
 
   damagePopup: {
@@ -134,7 +157,17 @@ const CONFIG = {
 
   maxPixelRatio: 2,         // sharpness cap: real pixels per screen point (1 = old soft look, 3 = full iPhone sharpness, heavier)
 
-  textWeight: 700,          // thickness of all game text: 400 = regular, 700 = bold, up to 1000 (needs a variable font)
+  // Drawing size of each image, × its normal size (1 = unchanged). Set from
+  // the Scale slider on each row in 🎨. Only the picture changes, not colliders.
+  artScale: {
+    minion_lv1: 1, minion_lv2: 1, minion_lv3: 1, minion_lv4: 1,
+    minion_lv5: 1, minion_lv6: 1, minion_lv7: 1, minion_lv8: 1,
+    minion_eat: 1, minion_leg: 1, minion_shadow: 1,
+    resource_1: 1.4, resource_2: 1, resource_3: 1, resource_4: 1, resource_5: 1, resource_6: 1,
+    splash_drop: 1, tap_marker: 1,
+  },
+
+  textWeight: 1000,         // thickness of all game text: 400 = regular, 700 = bold, up to 1000 (needs a variable font)
 
   clearDelay: 1.2,          // seconds between zones
   showLeader: false,        // debug: draw the invisible leader
@@ -167,19 +200,8 @@ const CONFIG_HELP = {
   collisionPasses: 'How many times per frame minion collisions are solved. Higher = less overlap, a bit more work for the phone.',
   'zone.baseCount': 'Number of resources in zone 1. Applies from the next zone or on Restart.',
   'zone.countPerZone': 'Resources added for each zone after the first. Applies from the next zone or on Restart.',
-  'zone.bigChanceBase': 'Chance (0 to 1) that a resource is a big tree in zone 1. Applies from the next zone or on Restart.',
-  'zone.bigChancePerZone': 'Big tree chance added for each zone after the first. Applies from the next zone or on Restart.',
-  'zone.bigChanceMax': 'Highest big tree chance, whatever the zone. Applies from the next zone or on Restart.',
-  'zone.smallSize': 'Size of small resources (bushes), in pixels. Applies from the next zone or on Restart.',
-  'zone.bigSize': 'Size of big resources (trees), in pixels. Applies from the next zone or on Restart.',
-  'zone.smallHp': 'HP of a small resource in zone 1. Applies from the next zone or on Restart.',
-  'zone.bigHp': 'HP of a big resource in zone 1. Applies from the next zone or on Restart.',
   'zone.hpMultPerZone': 'Resource HP is multiplied by this for each zone after the first. 1.35 = +35% per zone. Applies from the next zone or on Restart.',
-  'zone.smallValue': 'Wood earned from a small resource in zone 1. Applies from the next zone or on Restart.',
-  'zone.bigValue': 'Wood earned from a big resource in zone 1. Applies from the next zone or on Restart.',
   'zone.valueMultPerZone': 'Wood earned is multiplied by this for each zone after the first. Applies from the next zone or on Restart.',
-  'zone.smallColor': 'Color of small resources.',
-  'zone.bigColor': 'Color of big resources.',
   'guide.speed': 'How fast the swarm heads to the point you tap, in pixels per second.',
   'guide.showMarker': 'Show a white ring where you tapped until the swarm gets there.',
   'bounce.show': 'Minions squash and stretch while they move. Never while hitting.',
@@ -213,9 +235,20 @@ const CONFIG_HELP = {
   'shake.duration':'How long a resource shakes after a hit, in seconds.',
   'shake.amount': 'How strongly a resource shakes after a hit, in pixels.',
   'hpText.show': 'Show the remaining HP number in the middle of each resource.',
-  'hpText.smallFontSize': 'Text size of the HP number on small resources.',
-  'hpText.bigFontSize': 'Text size of the HP number on big resources.',
   'hpText.color': 'Color of the HP number.',
+  'splash.show': 'Juice drops burst out every time a minion bites a resource.',
+  'splash.count': 'Number of drops per bite.',
+  'splash.countRandom': 'Randomness of the drop count. 0.3 = up to 30% more or fewer each bite.',
+  'splash.speed': 'How fast drops fly out, in pixels per second.',
+  'splash.speedRandom': 'Randomness of each drop\'s speed. 0.5 = between half and 1.5× the speed.',
+  'splash.upKick': 'Extra upward push so drops jump up before falling. 0 = they spread evenly in all directions.',
+  'splash.gravity': 'How fast drops fall back down (pixels per second²). 0 = no falling.',
+  'splash.size': 'Drop size (radius in pixels). Also scaled by the Scale slider of the drop image in 🎨.',
+  'splash.sizeRandom': 'Randomness of each drop\'s size. 0.4 = 60% to 140% of the size.',
+  'splash.shrink': 'How much drops shrink before they disappear. 0 = keep their size, 1 = shrink to nothing.',
+  'splash.life': 'Seconds a drop lives (each one ±25%). It fades out in the second half.',
+  'splash.spin': 'How fast drops can spin (radians per second). Only visible with a drop image.',
+  'splash.tintImage': 'On: your drop image is colored with each resource\'s splashColor, so draw it in white/grey. Off: drawn with its own colors.',
   'damagePopup.show': 'Show a number for each hit, popping where the minion touches the resource.',
   'damagePopup.duration': 'How long a damage number stays before it has fully faded, in seconds.',
   'damagePopup.rise': 'How far a damage number floats up while fading, in pixels.',
@@ -229,6 +262,25 @@ const CONFIG_HELP = {
   maxPixelRatio: 'How sharp the game draws. 2 = sharp on phones and computers (recommended). 1 = softer but lighter. 3 = full iPhone sharpness, more work for the phone. Applies when the page is resized or reloaded.',
   showLeader: 'Debug: show the invisible leader the swarm follows, as a small white circle.',
 };
+
+for (const key of Object.keys(CONFIG.artScale)) {
+  CONFIG_HELP[`artScale.${key}`] = `Drawing size of the ${key} image, × its normal size. 1 = unchanged, 1.2 = 20% bigger. Only the picture, not the collider. Same as the Scale slider in 🎨.`;
+}
+
+// Help for every resource type (resources.res1 … res6), same text for each.
+for (let n = 1; n <= 6; n++) {
+  const p = `resources.res${n}.`;
+  Object.assign(CONFIG_HELP, {
+    [p + 'size']: `Size of resource ${n} in pixels (art and collider). Applies from the next zone or on Restart.`,
+    [p + 'hp']: `HP of resource ${n} in zone 1 (then × zone.hpMultPerZone each zone). Applies from the next zone or on Restart.`,
+    [p + 'value']: `Wood earned from resource ${n} in zone 1 (then × zone.valueMultPerZone each zone). Applies from the next zone or on Restart.`,
+    [p + 'weight']: `How often resource ${n} spawns, compared to the other types. 0 = never. E.g. weights 3 and 1 = 75% / 25%. Applies from the next zone or on Restart.`,
+    [p + 'weightPerZone']: `Added to resource ${n}'s weight each zone after the first (negative = rarer over time; never below 0). Applies from the next zone or on Restart.`,
+    [p + 'hpFontSize']: `Text size of the HP number on resource ${n}.`,
+    [p + 'color']: `Color of resource ${n} when it has no art.`,
+    [p + 'splashColor']: `Color of the juice drops when resource ${n} is bitten.`,
+  });
+}
 
 // ---- Setup -----------------------------------------------------------------
 
@@ -259,6 +311,7 @@ const state = {
   leader: { x: W / 2, y: H - 90, target: null },
   guide: null,              // { x, y } tapped point the swarm is heading to
   popups: [],               // floating damage numbers
+  splashes: [],             // juice drops flying off eaten resources
   paused: false,
   clearing: 0,
   flash: '',
@@ -304,14 +357,27 @@ function distToResource(r, px, py) {
 
 // ---- Zones -----------------------------------------------------------------
 
+const RESOURCE_TYPES = ['res1', 'res2', 'res3', 'res4', 'res5', 'res6'];
+const resourceArtKey = (type) => `resource_${type.slice(3)}`; // res3 → resource_3
+
 function makeZone(index) {
   const z = CONFIG.zone;
   const count = z.baseCount + index * z.countPerZone;
-  const bigChance = Math.min(z.bigChanceBase + index * z.bigChancePerZone, z.bigChanceMax);
+  // Weighted pick between the resource types for this zone.
+  const types = RESOURCE_TYPES.map((key) => {
+    const t = CONFIG.resources[key];
+    return { key, t, w: Math.max(0, t.weight + t.weightPerZone * index) };
+  }).filter((o) => o.w > 0);
+  const total = types.reduce((s, o) => s + o.w, 0);
+  const pickType = () => {
+    let roll = Math.random() * total;
+    for (const o of types) if ((roll -= o.w) < 0) return o;
+    return types[types.length - 1];
+  };
   const list = [];
-  for (let i = 0; i < count; i++) {
-    const big = Math.random() < bigChance;
-    const size = big ? z.bigSize : z.smallSize;
+  for (let i = 0; i < count && total > 0; i++) {
+    const { key: type, t } = pickType();
+    const size = t.size;
     let x, y, ok = false;
     // Keep resources apart so minions can walk between them.
     for (let tries = 0; tries < 40 && !ok; tries++) {
@@ -322,10 +388,10 @@ function makeZone(index) {
         Math.abs(r.y - y) > (r.size + size) / 2 + 16);
     }
     if (!ok) continue;
-    const maxHp = Math.max(1, Math.round((big ? z.bigHp : z.smallHp) * Math.pow(z.hpMultPerZone, index)));
+    const maxHp = Math.max(1, Math.round(t.hp * Math.pow(z.hpMultPerZone, index)));
     list.push({
-      x, y, size, big, maxHp, hp: maxHp,
-      value: Math.max(1, Math.round((big ? z.bigValue : z.smallValue) * Math.pow(z.valueMultPerZone, index))),
+      x, y, size, type, maxHp, hp: maxHp,
+      value: Math.max(1, Math.round(t.value * Math.pow(z.valueMultPerZone, index))),
       done: false,
       shake: 0,
     });
@@ -469,10 +535,9 @@ function updateMinion(m, dt, attackers) {
       m.cd = t.interval;
       m.target.hp -= t.dmg;
       m.target.shake = CONFIG.shake.duration;
-      if (CONFIG.damagePopup.show) {
-        const c = closestPoint(m.target, m.x, m.y); // where the minion touches it
-        state.popups.push({ x: c.x, y: c.y, text: String(t.dmg), age: 0 });
-      }
+      const c = closestPoint(m.target, m.x, m.y); // where the minion touches it
+      if (CONFIG.damagePopup.show) state.popups.push({ x: c.x, y: c.y, text: String(t.dmg), age: 0 });
+      spawnSplash(c.x, c.y, m.target);
     }
   }
 }
@@ -588,6 +653,7 @@ function update(dt) {
   if (state.paused) return;
   if (state.flashT > 0) state.flashT -= dt;
   for (const r of state.resources) if (r.shake > 0) r.shake -= dt;
+  updateSplashes(dt);
   for (const p of state.popups) p.age += dt;
   state.popups = state.popups.filter((p) => p.age < CONFIG.damagePopup.duration);
 
@@ -661,6 +727,7 @@ function restart() {
   state.flashT = 0;
   state.guide = null;
   state.popups = [];
+  state.splashes = [];
   state.leader.x = W / 2;
   state.leader.y = H - 90;
   state.minions = [];
@@ -765,7 +832,8 @@ function drawLegShape(c, w, len, color) {
 function drawLegs(c, m, rad) {
   const L = CONFIG.legs;
   const img = art('minion_leg');
-  const w = rad * L.width, len = rad * L.length;
+  const ls = artScale('minion_leg');
+  const w = rad * L.width * ls, len = rad * L.length * ls;
   const swing = (L.angle * Math.PI / 180) * m.bounceAmp * Math.sin(m.bouncePhase * L.perBounce);
   for (const side of [-1, 1]) {
     c.save();
@@ -774,6 +842,95 @@ function drawLegs(c, m, rad) {
     if (img) c.drawImage(img, -w / 2, 0, w, len);
     else drawLegShape(c, w, len, L.color);
     c.restore();
+  }
+}
+
+// ---- Splash VFX: juice drops burst from where a minion bites -----------------
+
+const MAX_SPLASHES = 400; // safety cap for phones
+
+function spawnSplash(x, y, r) {
+  const s = CONFIG.splash;
+  if (!s.show || s.count <= 0) return;
+  const color = CONFIG.resources[r.type].splashColor;
+  const n = Math.round(s.count * (1 + (Math.random() * 2 - 1) * s.countRandom));
+  for (let i = 0; i < n && state.splashes.length < MAX_SPLASHES; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const v = s.speed * (1 + (Math.random() * 2 - 1) * s.speedRandom);
+    state.splashes.push({
+      x, y,
+      vx: Math.cos(a) * v,
+      vy: Math.sin(a) * v - s.upKick,
+      age: 0,
+      life: s.life * (0.75 + Math.random() * 0.5),
+      size: s.size * (1 + (Math.random() * 2 - 1) * s.sizeRandom),
+      rot: Math.random() * Math.PI * 2,
+      vr: (Math.random() * 2 - 1) * s.spin,
+      color,
+    });
+  }
+}
+
+function updateSplashes(dt) {
+  const g = CONFIG.splash.gravity;
+  for (const p of state.splashes) {
+    p.age += dt;
+    p.vy += g * dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.rot += p.vr * dt;
+  }
+  state.splashes = state.splashes.filter((p) => p.age < p.life);
+}
+
+// The drop image tinted to a color, cached so it's only made once per color.
+const tintCache = new Map();
+function tintedDrop(img, color) {
+  const key = `${img.src}|${color}`;
+  let c = tintCache.get(key);
+  if (!c) {
+    c = document.createElement('canvas');
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    const g = c.getContext('2d');
+    g.drawImage(img, 0, 0);
+    g.globalCompositeOperation = 'multiply';       // keeps the art's shading (draw it white/grey)
+    g.fillStyle = color;
+    g.fillRect(0, 0, c.width, c.height);
+    g.globalCompositeOperation = 'destination-in'; // back to the drop's own shape
+    g.drawImage(img, 0, 0);
+    tintCache.set(key, c);
+  }
+  return c;
+}
+
+function drawDropShape(c, size, color) {
+  c.fillStyle = color;
+  c.beginPath();
+  c.arc(0, 0, size, 0, Math.PI * 2);
+  c.fill();
+  c.fillStyle = 'rgba(255,255,255,0.45)'; // small shine
+  c.beginPath();
+  c.arc(-size * 0.3, -size * 0.3, size * 0.35, 0, Math.PI * 2);
+  c.fill();
+}
+
+function drawSplashes() {
+  const s = CONFIG.splash;
+  if (!state.splashes.length) return;
+  const img = art('splash_drop');
+  const sc = artScale('splash_drop');
+  for (const p of state.splashes) {
+    const k = p.age / p.life;              // 0 → 1 over its life
+    const size = p.size * sc * (1 - k * s.shrink);
+    if (size <= 0) continue;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 1 - Math.max(0, (k - 0.5) / 0.5)); // fades in the second half
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rot);
+    if (img) ctx.drawImage(s.tintImage ? tintedDrop(img, p.color) : img, -size, -size, size * 2, size * 2);
+    else drawDropShape(ctx, size, p.color);
+    ctx.restore();
   }
 }
 
@@ -811,15 +968,19 @@ const ASSETS = [
     draw: (c, w, h) => { c.translate(w / 2, 0); drawLegShape(c, w * 0.5, h, CONFIG.legs.color); } },
   { key: 'minion_shadow', label: 'Minion shadow', size: '128×128 (transparent, drawn see-through by shadow.opacity)',
     draw: (c, w, h) => { c.translate(w / 2, h / 2); drawShadowShape(c, w / 2, h / 2); } },
-  { key: 'resource_small', label: 'Small resource (bush)', size: '64×64 (square)',
-    draw: (c, w, h) => drawResourceShape(c, w / 2, h / 2, w * 0.6, CONFIG.zone.smallColor) },
-  { key: 'resource_big', label: 'Big resource (tree)', size: '128×128 (square)',
-    draw: (c, w, h) => drawResourceShape(c, w / 2, h / 2, w * 0.8, CONFIG.zone.bigColor) },
+  ...RESOURCE_TYPES.map((type, i) => ({
+    key: resourceArtKey(type), label: `Resource ${i + 1}`,
+    size: '128×128, or a row of square frames that get more eaten as HP drops (e.g. 512×128 = 4 states)',
+    draw: (c, w, h) => drawResourceShape(c, w / 2, h / 2, w * 0.7, CONFIG.resources[type].color),
+  })),
+  { key: 'splash_drop', label: 'Splash drop', size: '32×32, transparent, drawn white/grey (tinted per resource)',
+    draw: (c, w, h) => { c.translate(w / 2, h / 2); drawDropShape(c, w * 0.35, '#ff8a3d'); } },
   { key: 'tap_marker', label: 'Tap marker', size: '64×64 (square, transparent)',
     draw: (c, w, h) => { c.fillStyle = 'rgba(0,0,0,0.25)'; c.fillRect(0, 0, w, h); drawMarkerShape(c, w / 2, h / 2); } },
 ];
 
 const art = (key) => (window.AssetPanel ? AssetPanel.image(key) : null);
+const artScale = (key) => (key in CONFIG.artScale ? Math.max(0, CONFIG.artScale[key]) : 1);
 
 // ---- Render ----------------------------------------------------------------
 
@@ -839,9 +1000,20 @@ function draw() {
     }
     const x = r.x + sx;
     const y = r.y + sy;
-    const img = art(r.big ? 'resource_big' : 'resource_small');
-    if (img) ctx.drawImage(img, x - h, y - h, r.size, r.size);
-    else drawResourceShape(ctx, x, y, r.size, r.big ? CONFIG.zone.bigColor : CONFIG.zone.smallColor);
+    const artKey = resourceArtKey(r.type);
+    const img = art(artKey);
+    const hs = h * artScale(artKey); // drawn half-size; the collider keeps r.size
+    if (img) {
+      // Sprite sheet: one row of square frames, frame 1 = untouched, last = almost eaten.
+      // With 4 frames: HP 100–76% → 1, 75–51% → 2, 50–26% → 3, 25–0% → 4.
+      const fh = img.naturalHeight;
+      const count = Math.max(1, Math.round(img.naturalWidth / fh));
+      const fw = img.naturalWidth / count;
+      const eaten = 1 - Math.max(0, r.hp) / r.maxHp;
+      const i = Math.min(count - 1, Math.floor(eaten * count));
+      ctx.drawImage(img, i * fw, 0, fw, fh, x - hs, y - hs, hs * 2, hs * 2);
+    }
+    else drawResourceShape(ctx, x, y, hs * 2, CONFIG.resources[r.type].color);
     r.drawX = x; // shaken position, reused by the overlay pass
     r.drawY = y;
   }
@@ -854,7 +1026,7 @@ function draw() {
     ctx.globalAlpha = Math.min(1, sh.opacity);
     for (const m of state.minions) {
       const rad = m.type.radius;
-      const rx = rad * sh.width;
+      const rx = rad * sh.width * artScale('minion_shadow');
       const ry = rx * sh.flatness;
       const y = m.y + rad + rad * sh.offsetY;
       if (shImg) ctx.drawImage(shImg, m.x - rx, y - ry, rx * 2, ry * 2);
@@ -884,13 +1056,16 @@ function draw() {
     const fc = CONFIG.facing;
     const mirror = fc.flip && m.face !== (fc.artFacesRight ? 1 : -1);
     if (mirror) { ctx.save(); ctx.scale(-1, 1); }
-    if (eat) ctx.drawImage(eat.img, eat.sx, 0, eat.sw, eat.sh, -rad, -rad, rad * 2, rad * 2);
-    else if (img) ctx.drawImage(img, -rad, -rad, rad * 2, rad * 2);
-    else drawMinionShape(ctx, rad, m.type.color);
+    const dr = rad * artScale(eat ? 'minion_eat' : minionArtKey(m.level)); // drawn radius
+    if (eat) ctx.drawImage(eat.img, eat.sx, 0, eat.sw, eat.sh, -dr, -dr, dr * 2, dr * 2);
+    else if (img) ctx.drawImage(img, -dr, -dr, dr * 2, dr * 2);
+    else drawMinionShape(ctx, dr, m.type.color);
     if (mirror) ctx.restore();
     if (CONFIG.minion.showLevel && m.level > 1) drawLevelNumber(ctx, rad, m.level);
     ctx.restore();
   }
+
+  drawSplashes();
 
   // Overlays: HP bars, HP numbers and damage numbers always draw on top of
   // minions and resources.
@@ -906,7 +1081,7 @@ function draw() {
     }
     if (CONFIG.hpText.show) {
       // Drawn at the shaken position so the number shakes with the resource.
-      const size = r.big ? CONFIG.hpText.bigFontSize : CONFIG.hpText.smallFontSize;
+      const size = CONFIG.resources[r.type].hpFontSize;
       ctx.font = `${CONFIG.textWeight} ${size}px ${gameFont()}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -940,8 +1115,15 @@ function draw() {
   if (state.guide && CONFIG.guide.showMarker) {
     ctx.globalAlpha = 0.7;
     const img = art('tap_marker');
-    if (img) ctx.drawImage(img, state.guide.x - 14, state.guide.y - 14, 28, 28);
-    else drawMarkerShape(ctx, state.guide.x, state.guide.y);
+    const ms = artScale('tap_marker');
+    if (img) ctx.drawImage(img, state.guide.x - 14 * ms, state.guide.y - 14 * ms, 28 * ms, 28 * ms);
+    else {
+      ctx.save();
+      ctx.translate(state.guide.x, state.guide.y);
+      ctx.scale(ms, ms);
+      drawMarkerShape(ctx, 0, 0);
+      ctx.restore();
+    }
     ctx.globalAlpha = 1;
   }
 
@@ -1029,6 +1211,13 @@ if (window.AssetPanel) {
     mount: canvas.parentElement,
     uploadUrl: 'https://github.com/Rudy-art-PomodoroGames/HTML-playable-pomodoro/upload/main/minion-swarm/assets',
     images: ASSETS,
+    // Scale slider on each image row; same values as ⚙ → artScale.
+    scale: {
+      min: 0.2, max: 3, step: 0.05,
+      has: (key) => key in CONFIG.artScale,
+      get: (key) => CONFIG.artScale[key],
+      set: (key, v) => { CONFIG.artScale[key] = v; if (window.SettingsPanel) SettingsPanel.save(); },
+    },
     font: {
       family: 'GameFont', fallback: 'system-ui, sans-serif',
       files: ['Nunito-VariableFont_wght.ttf'], // your font's own file name in assets/

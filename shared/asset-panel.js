@@ -13,6 +13,7 @@
 //     onToggle, onFontChange, font: { family, fallback, files?, weight? },
 //     (files: font file names to look for in assets/ before font.*;
 //      weight: { get(), set(v), min, max, step } shows a weight slider on the font row)
+//     scale: { has(key), get(key), set(key, v), min, max, step } shows a Scale slider on image rows
 //     images: [{ key, label, size, draw(ctx, w, h), parent?, group? }] });
 //     (parent: key of the image this one is listed under, folded behind a
 //      "▸ <group>" toggle on that image's row)
@@ -135,7 +136,7 @@
 
   // ---- Panel --------------------------------------------------------------
 
-  function init({ storageKey, basePath = 'assets/', mount, uploadUrl, onToggle, onFontChange, images = [], font = null }) {
+  function init({ storageKey, basePath = 'assets/', mount, uploadUrl, onToggle, onFontChange, images = [], font = null, scale = null }) {
     const api = window.AssetPanel;
     const entries = {};      // key -> { source, img, blob, name }
     const fallbackFont = (font && font.fallback) || 'system-ui, sans-serif';
@@ -361,30 +362,44 @@
         }
         actions.push(...extra);
         row(thumb, a.label, e.blob ? `${a.key}.${imageExt(e)}` : `${a.key}.webp / .png`, e.source, details, actions, sub);
+        if (scale && scale.has(a.key)) body.lastChild.querySelector('.ap-info').appendChild(scaleControl(a.key));
       }
     }
 
-    // Weight slider for the font row; font.weight = { get(), set(v), min, max, step }.
-    function weightControl(sample) {
-      const w = font.weight;
+    // A labeled slider: { name, value, min, max, step, format(v), onInput(v) }.
+    function slider({ name, value, min, max, step, format = (v) => v, onInput }) {
       const wrap = document.createElement('label');
       wrap.className = 'ap-weight';
       const text = document.createElement('span');
       const input = document.createElement('input');
       input.type = 'range';
-      input.min = w.min || 100;
-      input.max = w.max || 1000;
-      input.step = w.step || 50;
-      input.value = w.get();
-      const show = () => { text.textContent = `Weight ${input.value}`; };
+      input.min = min;
+      input.max = max;
+      input.step = step;
+      input.value = value;
+      const show = () => { text.textContent = `${name} ${format(Number(input.value))}`; };
       show();
-      input.addEventListener('input', () => {
-        w.set(Number(input.value));
-        sample.style.fontWeight = input.value;
-        show();
-      });
+      input.addEventListener('input', () => { onInput(Number(input.value)); show(); });
       wrap.append(text, input);
       return wrap;
+    }
+
+    // Weight slider for the font row; font.weight = { get(), set(v), min, max, step }.
+    function weightControl(sample) {
+      const w = font.weight;
+      return slider({
+        name: 'Weight', value: w.get(), min: w.min || 100, max: w.max || 1000, step: w.step || 50,
+        onInput: (v) => { w.set(v); sample.style.fontWeight = v; },
+      });
+    }
+
+    // Scale slider on an image row; scale = { has(key), get(key), set(key, v), min, max, step }.
+    function scaleControl(key) {
+      return slider({
+        name: 'Scale', value: scale.get(key), min: scale.min || 0.2, max: scale.max || 3, step: scale.step || 0.05,
+        format: (v) => `×${v.toFixed(2)}`,
+        onInput: (v) => scale.set(key, v),
+      });
     }
 
     function fontRow() {
