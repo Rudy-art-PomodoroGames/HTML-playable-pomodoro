@@ -6,7 +6,7 @@
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 31;
+const BUILD = 32;
 
 // ---- Tunable values (all in one place) ------------------------------------
 
@@ -146,6 +146,16 @@ const CONFIG = {
     tintImage: true,        // color your drop image with each resource's splashColor (draw it white/grey)
   },
 
+  // Effect played once on the new minion after a merge: the merge_vfx sprite
+  // sheet from 🎨 (one row of square frames, e.g. 6 frames). Without a sheet,
+  // a simple growing ring is drawn.
+  mergeVfx: {
+    show: true,
+    fps: 15,                // frames per second (6 frames at 15 = 0.4 s)
+    size: 2,                // × the new minion's width
+    followMinion: true,     // move with the minion while playing; off = stays where the merge happened
+  },
+
   damagePopup: {
     show: true,
     duration: 0.7,          // seconds until fully faded
@@ -164,7 +174,7 @@ const CONFIG = {
     minion_lv5: 0.7, minion_lv6: 1, minion_lv7: 1, minion_lv8: 1,
     minion_eat: 1, minion_leg: 1, minion_shadow: 1,
     resource_1: 1.4, resource_2: 1.25, resource_3: 2.25, resource_4: 1.7, resource_5: 2.2, resource_6: 1.6,
-    splash_drop: 1, tap_marker: 1,
+    splash_drop: 1, merge_vfx: 1, tap_marker: 1,
   },
 
   textWeight: 1000,         // thickness of all game text: 400 = regular, 700 = bold, up to 1000 (needs a variable font)
@@ -236,6 +246,10 @@ const CONFIG_HELP = {
   'shake.amount': 'How strongly a resource shakes after a hit, in pixels.',
   'hpText.show': 'Show the remaining HP number in the middle of each resource.',
   'hpText.color': 'Color of the HP number.',
+  'mergeVfx.show': 'Play the merge effect on the new minion after a merge. Load the sprite sheet in 🎨 → Merge effect; without it, a simple ring is drawn.',
+  'mergeVfx.fps': 'Speed of the merge effect, in frames per second. 6 frames at 15 fps last 0.4 s. It plays once.',
+  'mergeVfx.size': 'Size of the merge effect compared to the new minion\'s width. 2 = twice as wide as the minion.',
+  'mergeVfx.followMinion': 'On: the effect moves with the new minion while it plays. Off: it stays where the merge happened.',
   'splash.show': 'Juice drops burst out every time a minion bites a resource.',
   'splash.count': 'Number of drops per bite.',
   'splash.countRandom': 'Randomness of the drop count. 0.3 = up to 30% more or fewer each bite.',
@@ -315,6 +329,7 @@ const state = {
   guide: null,              // { x, y } tapped point the swarm is heading to
   popups: [],               // floating damage numbers
   splashes: [],             // juice drops flying off eaten resources
+  mergeFx: [],              // merge effects playing on new minions
   paused: false,
   clearing: 0,
   flash: '',
@@ -657,6 +672,7 @@ function update(dt) {
   if (state.flashT > 0) state.flashT -= dt;
   for (const r of state.resources) if (r.shake > 0) r.shake -= dt;
   updateSplashes(dt);
+  updateMergeFx(dt);
   for (const p of state.popups) p.age += dt;
   state.popups = state.popups.filter((p) => p.age < CONFIG.damagePopup.duration);
 
@@ -717,6 +733,57 @@ function merge() {
   const merged = spawn(a.level + 1, (a.x + b.x) / 2, (a.y + b.y) / 2);
   state.minions = state.minions.filter((m) => m !== a && m !== b);
   state.minions.push(merged);
+  if (CONFIG.mergeVfx.show) state.mergeFx.push({ m: merged, x: merged.x, y: merged.y, age: 0 });
+}
+
+// ---- Merge VFX: a sprite sheet played once on the new minion ----------------
+
+// Frame count and size of the merge sheet (one row of square frames).
+function mergeSheet() {
+  const img = art('merge_vfx');
+  if (!img) return null;
+  const fh = img.naturalHeight;
+  const count = Math.max(1, Math.round(img.naturalWidth / fh));
+  return { img, count, fw: img.naturalWidth / count, fh };
+}
+
+// How long one merge effect lasts: its frames at mergeVfx.fps, or a short
+// built-in burst when there's no sheet.
+function mergeFxLength() {
+  const s = mergeSheet();
+  return s ? s.count / Math.max(1, CONFIG.mergeVfx.fps) : 0.4;
+}
+
+function updateMergeFx(dt) {
+  const len = mergeFxLength();
+  for (const f of state.mergeFx) {
+    f.age += dt;
+    if (CONFIG.mergeVfx.followMinion && state.minions.includes(f.m)) { f.x = f.m.x; f.y = f.m.y; }
+  }
+  state.mergeFx = state.mergeFx.filter((f) => f.age < len);
+}
+
+function drawMergeFx() {
+  const v = CONFIG.mergeVfx;
+  const sheet = mergeSheet();
+  for (const f of state.mergeFx) {
+    const size = minionDrawRadius(f.m) * 2 * v.size * artScale('merge_vfx'); // × the new minion's width
+    if (sheet) {
+      const i = Math.min(sheet.count - 1, Math.floor(f.age * v.fps));
+      ctx.drawImage(sheet.img, i * sheet.fw, 0, sheet.fw, sheet.fh, f.x - size / 2, f.y - size / 2, size, size);
+    } else {
+      // Built-in burst until you load a sheet: a ring that grows and fades.
+      const k = f.age / 0.4;
+      ctx.save();
+      ctx.globalAlpha = 1 - k;
+      ctx.strokeStyle = '#fff6b0';
+      ctx.lineWidth = 4 * (1 - k) + 1;
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, (size / 2) * (0.4 + 0.6 * k), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
 }
 
 document.getElementById('hire').addEventListener('click', hire);
@@ -731,6 +798,7 @@ function restart() {
   state.guide = null;
   state.popups = [];
   state.splashes = [];
+  state.mergeFx = [];
   state.leader.x = W / 2;
   state.leader.y = H - 90;
   state.minions = [];
@@ -976,6 +1044,11 @@ const ASSETS = [
     size: '128×128, or a row of square frames that get more eaten as HP drops (e.g. 512×128 = 4 states)',
     draw: (c, w, h) => drawResourceShape(c, w / 2, h / 2, w * 0.7, CONFIG.resources[type].color),
   })),
+  { key: 'merge_vfx', label: 'Merge effect (sprite sheet)', size: 'one row of square frames, e.g. 6 × 256 = 1536×256; plays once on the new minion',
+    draw: (c, w, h) => {
+      c.strokeStyle = '#fff6b0'; c.lineWidth = 4;
+      c.beginPath(); c.arc(w / 2, h / 2, w * 0.35, 0, Math.PI * 2); c.stroke();
+    } },
   { key: 'splash_drop', label: 'Splash drop', size: '32×32, transparent, drawn white/grey (tinted per resource)',
     draw: (c, w, h) => { c.translate(w / 2, h / 2); drawDropShape(c, w * 0.35, '#ff8a3d'); } },
   { key: 'tap_marker', label: 'Tap marker', size: '64×64 (square, transparent)',
@@ -1072,6 +1145,7 @@ function draw() {
   }
 
   drawSplashes();
+  drawMergeFx();
 
   // Overlays: HP bars, HP numbers and damage numbers always draw on top of
   // minions and resources.
