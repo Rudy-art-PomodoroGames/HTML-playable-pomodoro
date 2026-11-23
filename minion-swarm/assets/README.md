@@ -10,8 +10,8 @@ game's built-in drawn shape (or the default font), so the game never breaks.
 | `minion_eat.webp` / `.png` | Eating animation sprite sheet, looped while a minion hits a resource: one row of square frames, frame count = width ÷ height. None = normal sprite | e.g. 512×128 (4 frames), same framing as `minion_lv1` |
 | `minion_leg.webp` / `.png` | One leg, used for both (top center of the image is the hip it swings from) | 32×64, transparent |
 | `minion_shadow.webp` / `.png` | Shadow under every minion (drawn see-through, set darkness with `shadow.opacity`) | 128×128, transparent |
-| `resource_small.webp` / `.png` | Small resource (bush) | 64×64 |
-| `resource_big.webp` / `.png` | Big resource (tree) | 128×128 |
+| `resource_1.webp` … `resource_6.webp` (or `.png`) | The 6 resource types (size, HP, wood and spawn weight in ⚙ → resources). One image, or a sprite sheet: one row of square frames from untouched to almost eaten, picked by HP left (4 frames = 100/75/50/25%) | 128×128, or 512×128 for 4 states |
+| `splash_drop.webp` / `.png` | One juice drop for the bite splash. Draw it white/grey: it's tinted with each resource's `splashColor` (turn off `splash.tintImage` to keep its own colors) | 32×32, transparent |
 | `tap_marker.webp` / `.png` | Marker shown where the player taps | 64×64, transparent |
 | `Nunito-VariableFont_wght.ttf` (or `font.woff2` / `.woff` / `.ttf` / `.otf`) | Font for all game text. A variable font lets 🎨 → Game font → Weight (same as ⚙ → textWeight) go from thin to extra thick | — |
 
