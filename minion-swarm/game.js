@@ -6,7 +6,7 @@
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 22;
+const BUILD = 23;
 
 // ---- Tunable values (all in one place) ------------------------------------
 
@@ -75,6 +75,19 @@ const CONFIG = {
     perBounce: 0.5,         // tilt cycles per bounce; 0.5 = left on one step, right on the next
   },
 
+  // Two legs behind the body. Each swings from its top (the hip) while the
+  // minion walks, opposite to the other; they ease back to straight when it stops.
+  legs: {
+    show: true,
+    angle: 25,              // max swing in degrees each side
+    perBounce: 0.5,         // swing cycles per bounce; 0.5 = one step per bounce
+    spacing: 0.35,          // hips this far left/right of center, × minion radius
+    hipY: 0.65,             // hips this far below center, × minion radius
+    length: 0.45,           // leg length × minion radius
+    width: 0.22,            // leg thickness × minion radius
+    color: '#2b3d33',       // drawn legs only (ignored when you upload leg art)
+  },
+
   // Round shadow under each minion's feet. Doesn't wobble or bounce.
   shadow: {
     show: true,
@@ -111,6 +124,8 @@ const CONFIG = {
     fontSize: 13,
     color: '#ffe066',
   },
+
+  maxPixelRatio: 2,         // sharpness cap: real pixels per screen point (1 = old soft look, 3 = full iPhone sharpness, heavier)
 
   clearDelay: 1.2,          // seconds between zones
   showLeader: false,        // debug: draw the invisible leader
@@ -166,6 +181,14 @@ const CONFIG_HELP = {
   'bounce.fade': 'How quickly the bounce fades in when a minion starts moving and out when it stops.',
   'wobble.show': 'While walking, minions rock left and right from the bottom center of their sprite, on top of the bounce.',
   'wobble.angle': 'How far a minion tilts to each side while walking, in degrees.',
+  'legs.show': 'Draw two legs behind each minion. They swing from the hip while walking and ease back to straight when it stops.',
+  'legs.angle': 'How far each leg swings forward and back while walking, in degrees.',
+  'legs.perBounce': 'Leg swing cycles per bounce. 0.5 = each bounce is one step (left leg, then right leg).',
+  'legs.spacing': 'How far apart the legs are: distance of each hip from the center, in minion radii.',
+  'legs.hipY': 'How low the hips sit below the minion\'s center, in minion radii. Higher = legs start lower.',
+  'legs.length': 'Leg length, in minion radii. Legs scale with minion size.',
+  'legs.width': 'Leg thickness, in minion radii.',
+  'legs.color': 'Color of the drawn capsule legs. Not used once you upload leg art in 🎨.',
   'shadow.show': 'Draw a soft round shadow under each minion. It stays still while the minion wobbles and bounces.',
   'shadow.opacity': 'How dark the shadow is. 0 = invisible, 1 = solid black. The background shows through below 1.',
   'shadow.width': 'Shadow width compared to the minion. 1 = as wide as the minion.',
@@ -191,6 +214,7 @@ const CONFIG_HELP = {
   clearDelay: 'Pause in seconds between clearing a zone and the next zone appearing.',
   'zone.colliderScale': 'Size of the round collider minions bump into and hit, compared to the resource art. 1 = a circle touching the art\'s edges, 0.8 = smaller so minions overlap the art a bit, 1.2 = bigger.',
   showColliders: 'Debug: draw each resource\'s collider circle in cyan, to check it against your art.',
+  maxPixelRatio: 'How sharp the game draws. 2 = sharp on phones and computers (recommended). 1 = softer but lighter. 3 = full iPhone sharpness, more work for the phone. Applies when the page is resized or reloaded.',
   showLeader: 'Debug: show the invisible leader the swarm follows, as a small white circle.',
 };
 
@@ -198,8 +222,21 @@ const CONFIG_HELP = {
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
-const W = canvas.width;
+const W = canvas.width;   // game space stays 360×560 whatever the screen
 const H = canvas.height;
+
+// Sharp rendering: the canvas gets as many real pixels as it covers on
+// screen (up to maxPixelRatio per CSS pixel); the game still draws in W×H.
+let renderScale = 1;
+function fitCanvas() {
+  const cssW = canvas.getBoundingClientRect().width || W;
+  const ratio = Math.min(window.devicePixelRatio || 1, Math.max(1, CONFIG.maxPixelRatio));
+  renderScale = (cssW * ratio) / W;
+  const pw = Math.round(W * renderScale), ph = Math.round(H * renderScale);
+  if (canvas.width !== pw || canvas.height !== ph) { canvas.width = pw; canvas.height = ph; }
+}
+fitCanvas();
+window.addEventListener('resize', fitCanvas);
 
 const state = {
   wood: 0,
@@ -683,6 +720,35 @@ function drawMarkerShape(c, x, y) {
   c.stroke();
 }
 
+// Capsule leg hanging down from its pivot at 0,0 (the hip): w wide, len long.
+function drawLegShape(c, w, len, color) {
+  const r = w / 2;
+  c.fillStyle = color;
+  c.beginPath();
+  c.moveTo(-r, r);
+  c.arc(0, r, r, Math.PI, 0);
+  c.lineTo(r, len - r);
+  c.arc(0, len - r, r, 0, Math.PI);
+  c.closePath();
+  c.fill();
+}
+
+// Both legs of a minion, in its local space (center 0,0, radius rad).
+function drawLegs(c, m, rad) {
+  const L = CONFIG.legs;
+  const img = art('minion_leg');
+  const w = rad * L.width, len = rad * L.length;
+  const swing = (L.angle * Math.PI / 180) * m.bounceAmp * Math.sin(m.bouncePhase * L.perBounce);
+  for (const side of [-1, 1]) {
+    c.save();
+    c.translate(side * rad * L.spacing, rad * L.hipY);
+    c.rotate(side * swing); // opposite legs swing opposite ways
+    if (img) c.drawImage(img, -w / 2, 0, w, len);
+    else drawLegShape(c, w, len, L.color);
+    c.restore();
+  }
+}
+
 // Solid black oval centered on 0,0; opacity is applied when drawing.
 function drawShadowShape(c, rx, ry) {
   c.fillStyle = '#000';
@@ -705,6 +771,8 @@ const ASSETS = [
       if (level > 1) drawLevelNumber(c, w * 0.38, level);
     },
   })),
+  { key: 'minion_leg', label: 'Minion leg', size: '32×64 (transparent, top center = hip)',
+    draw: (c, w, h) => { c.translate(w / 2, 0); drawLegShape(c, w * 0.5, h, CONFIG.legs.color); } },
   { key: 'minion_shadow', label: 'Minion shadow', size: '128×128 (transparent, drawn see-through by shadow.opacity)',
     draw: (c, w, h) => { c.translate(w / 2, h / 2); drawShadowShape(c, w / 2, h / 2); } },
   { key: 'resource_small', label: 'Small resource (bush)', size: '64×64 (square)',
@@ -720,6 +788,7 @@ const art = (key) => (window.AssetPanel ? AssetPanel.image(key) : null);
 // ---- Render ----------------------------------------------------------------
 
 function draw() {
+  ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
   const bg = art('background');
   if (bg) ctx.drawImage(bg, 0, 0, W, H);
   else { ctx.fillStyle = BACKGROUND_COLOR; ctx.fillRect(0, 0, W, H); }
@@ -773,6 +842,7 @@ function draw() {
       ctx.translate(0, -rad);
     } else ctx.translate(m.x, m.y);
     ctx.scale(1 + k, 1 - k);
+    if (CONFIG.legs.show) drawLegs(ctx, m, rad); // behind the body
     // Mirror only the art, so the level number stays readable.
     const fc = CONFIG.facing;
     const mirror = fc.flip && m.face !== (fc.artFacesRight ? 1 : -1);

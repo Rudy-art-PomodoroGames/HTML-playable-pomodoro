@@ -7,6 +7,7 @@ game's built-in drawn shape (or the default font), so the game never breaks.
 | --- | --- | --- |
 | `background.webp` / `.png` | Play area background (stretched to fill) | 720×1120 |
 | `minion_lv1.webp` … `minion_lv8.webp` (or `.png`) | Minion art per merge level (levels above 8 reuse them in a cycle) | 128×128, transparent |
+| `minion_leg.webp` / `.png` | One leg, used for both (top center of the image is the hip it swings from) | 32×64, transparent |
 | `minion_shadow.webp` / `.png` | Shadow under every minion (drawn see-through, set darkness with `shadow.opacity`) | 128×128, transparent |
 | `resource_small.webp` / `.png` | Small resource (bush) | 64×64 |
 | `resource_big.webp` / `.png` | Big resource (tree) | 128×128 |
