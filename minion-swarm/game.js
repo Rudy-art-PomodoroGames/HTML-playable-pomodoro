@@ -6,7 +6,7 @@
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 23;
+const BUILD = 24;
 
 // ---- Tunable values (all in one place) ------------------------------------
 
@@ -77,6 +77,13 @@ const CONFIG = {
 
   // Two legs behind the body. Each swings from its top (the hip) while the
   // minion walks, opposite to the other; they ease back to straight when it stops.
+  // Eating animation while a minion hits a resource: loops the sprite sheet
+  // minion_eat (one row of square frames). With no sheet, the normal sprite is used.
+  eat: {
+    show: true,
+    fps: 8,                 // frames per second
+  },
+
   legs: {
     show: true,
     angle: 25,              // max swing in degrees each side
@@ -181,6 +188,8 @@ const CONFIG_HELP = {
   'bounce.fade': 'How quickly the bounce fades in when a minion starts moving and out when it stops.',
   'wobble.show': 'While walking, minions rock left and right from the bottom center of their sprite, on top of the bounce.',
   'wobble.angle': 'How far a minion tilts to each side while walking, in degrees.',
+  'eat.show': 'While hitting a resource, minions loop the eating sprite sheet you load in 🎨 (under Minion level 1 → Eating): one row of square frames, the frame count is worked out from its width. With no sheet loaded, they keep their normal sprite.',
+  'eat.fps': 'Speed of the eating animation, in frames per second.',
   'legs.show': 'Draw two legs behind each minion. They swing from the hip while walking and ease back to straight when it stops.',
   'legs.angle': 'How far each leg swings forward and back while walking, in degrees.',
   'legs.perBounce': 'Leg swing cycles per bounce. 0.5 = each bounce is one step (left leg, then right leg).',
@@ -336,7 +345,7 @@ function spawn(level, x, y) {
   const r = Math.random() * CONFIG.formationRadius;
   return {
     level, type: statsFor(level), x, y, vx: 0, vy: 0, cd: 0, target: null,
-    attacking: false, face: 1, bounceAmp: 0, bouncePhase: Math.random() * Math.PI * 2,
+    attacking: false, eatT: 0, face: 1, bounceAmp: 0, bouncePhase: Math.random() * Math.PI * 2,
     bounceRand: Math.random() * 2 - 1, // this minion's own rhythm offset
     ox: Math.cos(a) * r, oy: Math.sin(a) * r, // resting spot around the leader
   };
@@ -446,6 +455,9 @@ function updateMinion(m, dt, attackers) {
   m.bounceAmp += ((bouncing ? 1 : 0) - m.bounceAmp) * Math.min(1, b.fade * dt);
   const rhythm = 1 + m.bounceRand * b.variation;
   if (b.stepLength > 0) m.bouncePhase += (speedNow * dt * rhythm / b.stepLength) * Math.PI * 2;
+
+  // Eating animation clock: runs while hitting, restarts from frame 1 each time.
+  m.eatT = m.attacking ? (m.eatT || 0) + dt : 0;
 
   // Attack when touching the resource.
   if (m.attacking) {
@@ -676,6 +688,19 @@ canvas.addEventListener('pointerdown', (e) => {
 
 const BACKGROUND_COLOR = '#1f3a24';
 const MINION_ART_LEVELS = 8; // minion_lv1..lv8; higher levels reuse them in a cycle
+// Eating sprite sheet: one horizontal strip of square frames. The number of
+// frames is width ÷ height (512×128 = 4 frames, 768×128 = 6…).
+// Returns the frame to draw { img, sx, sw, sh }, or null for the normal sprite.
+function eatFrame(m) {
+  if (!CONFIG.eat.show || !m.attacking) return null;
+  const sheet = art('minion_eat');
+  if (!sheet) return null;
+  const sh = sheet.naturalHeight;
+  const count = Math.max(1, Math.round(sheet.naturalWidth / sh));
+  const sw = sheet.naturalWidth / count;
+  const i = Math.floor(m.eatT * Math.max(0.1, CONFIG.eat.fps)) % count;
+  return { img: sheet, sx: i * sw, sw, sh };
+}
 
 const gameFont = () => (window.AssetPanel ? AssetPanel.fontStack : 'system-ui, sans-serif');
 
@@ -771,6 +796,14 @@ const ASSETS = [
       if (level > 1) drawLevelNumber(c, w * 0.38, level);
     },
   })),
+  { key: 'minion_eat', label: 'Minion eating (sprite sheet)', parent: 'minion_lv1', group: 'Eating',
+    size: 'one row of square frames, e.g. 512×128 = 4 frames; same framing as minion_lv1 (optional)',
+    draw: (c, w, h) => {
+      // Placeholder thumbnail only; with no sheet the game keeps the normal sprite.
+      c.globalAlpha = 0.35;
+      c.translate(w / 2, h / 2);
+      drawMinionShape(c, w * 0.38, CONFIG.minion.colors[0]);
+    } },
   { key: 'minion_leg', label: 'Minion leg', size: '32×64 (transparent, top center = hip)',
     draw: (c, w, h) => { c.translate(w / 2, 0); drawLegShape(c, w * 0.5, h, CONFIG.legs.color); } },
   { key: 'minion_shadow', label: 'Minion shadow', size: '128×128 (transparent, drawn see-through by shadow.opacity)',
@@ -830,7 +863,8 @@ function draw() {
   for (const m of state.minions) {
     // Squash & stretch: wider when flatter, taller when narrower.
     const k = CONFIG.bounce.amount * m.bounceAmp * Math.sin(m.bouncePhase);
-    const img = art(minionArtKey(m.level));
+    const eat = eatFrame(m);
+    const img = eat ? null : art(minionArtKey(m.level));
     const rad = m.type.radius;
     ctx.save();
     // Wobble: tilt around the bottom center of the sprite.
@@ -847,7 +881,8 @@ function draw() {
     const fc = CONFIG.facing;
     const mirror = fc.flip && m.face !== (fc.artFacesRight ? 1 : -1);
     if (mirror) { ctx.save(); ctx.scale(-1, 1); }
-    if (img) ctx.drawImage(img, -rad, -rad, rad * 2, rad * 2);
+    if (eat) ctx.drawImage(eat.img, eat.sx, 0, eat.sw, eat.sh, -rad, -rad, rad * 2, rad * 2);
+    else if (img) ctx.drawImage(img, -rad, -rad, rad * 2, rad * 2);
     else drawMinionShape(ctx, rad, m.type.color);
     if (mirror) ctx.restore();
     if (CONFIG.minion.showLevel && m.level > 1) drawLevelNumber(ctx, rad, m.level);

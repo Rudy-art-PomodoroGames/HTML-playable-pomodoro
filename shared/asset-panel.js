@@ -11,7 +11,9 @@
 // Usage:
 //   AssetPanel.init({ storageKey, basePath: 'assets/', mount, uploadUrl,
 //     onToggle, onFontChange, font: { family, fallback },
-//     images: [{ key, label, size, draw(ctx, w, h) }] });
+//     images: [{ key, label, size, draw(ctx, w, h), parent?, group? }] });
+//     (parent: key of the image this one is listed under, folded behind a
+//      "▸ <group>" toggle on that image's row)
 //   AssetPanel.image(key)   // loaded <img> or null (then draw the shape)
 //   AssetPanel.fontStack    // CSS font-family to use
 
@@ -105,6 +107,9 @@
     .ap-head button { background: transparent; border: 0; color: #fff; font-size: 20px; cursor: pointer; padding: 0 4px; }
     .ap-body { overflow-y: auto; padding: 0 16px 8px; }
     .ap-row { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid #2a3a2e; }
+    .ap-row.ap-sub { padding-left: 20px; background: rgba(0,0,0,0.15); }
+    .ap-row.ap-sub .ap-thumb { width: 44px; height: 44px; }
+    .ap-actions .ap-group { background: #24382b; color: #cfe8d4; }
     .ap-thumb { width: 56px; height: 56px; flex: none; border-radius: 8px; display: flex; align-items: center; justify-content: center;
       background: repeating-conic-gradient(#2a3a2e 0% 25%, #223026 0% 50%) 50% / 12px 12px; overflow: hidden; }
     .ap-thumb img, .ap-thumb canvas { max-width: 100%; max-height: 100%; }
@@ -257,9 +262,9 @@
       return label;
     }
 
-    function row(thumb, title, fileName, source, details, actions) {
+    function row(thumb, title, fileName, source, details, actions, sub) {
       const r = document.createElement('div');
-      r.className = 'ap-row';
+      r.className = sub ? 'ap-row ap-sub' : 'ap-row';
       const t = document.createElement('div');
       t.className = 'ap-thumb';
       t.appendChild(thumb);
@@ -280,10 +285,38 @@
       body.appendChild(r);
     }
 
+    // Images with a `parent` key are listed under that image, folded away
+    // behind a toggle button (label from their `group`).
+    const expanded = new Set();
+
     function render() {
+      const scroll = body.scrollTop; // keep the list where it was (toggles, replaces)
       body.innerHTML = '';
 
       for (const a of images) {
+        if (a.parent && entries[a.parent]) continue; // drawn under its parent
+        const children = images.filter((c) => c.parent === a.key);
+        const extra = [];
+        if (children.length) {
+          const open = expanded.has(a.key);
+          const loaded = children.filter((c) => entries[c.key].img).length;
+          const b = actionButton(`${open ? '▾' : '▸'} ${children[0].group || 'More'} (${loaded}/${children.length})`, () => {
+            if (expanded.has(a.key)) expanded.delete(a.key); else expanded.add(a.key);
+            render();
+          });
+          b.className = 'ap-group';
+          extra.push(b);
+        }
+        imageRow(a, extra, false);
+        if (children.length && expanded.has(a.key)) for (const c of children) imageRow(c, [], true);
+      }
+
+      fontRow();
+      body.scrollTop = scroll;
+    }
+
+    function imageRow(a, extra, sub) {
+      {
         const e = entries[a.key];
         let thumb;
         if (e.img) {
@@ -316,9 +349,12 @@
             render();
           }));
         }
-        row(thumb, a.label, e.blob ? `${a.key}.${imageExt(e)}` : `${a.key}.webp / .png`, e.source, details, actions);
+        actions.push(...extra);
+        row(thumb, a.label, e.blob ? `${a.key}.${imageExt(e)}` : `${a.key}.webp / .png`, e.source, details, actions, sub);
       }
+    }
 
+    function fontRow() {
       if (font) {
         const sample = document.createElement('div');
         sample.className = 'ap-font-sample';
