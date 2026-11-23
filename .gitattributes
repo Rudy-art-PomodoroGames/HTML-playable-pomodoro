@@ -1,0 +1,40 @@
+# Git LFS: heavy source files are stored in GitHub's Large File Storage.
+#
+# Do NOT add game files here (.png, .webp, fonts, .js, .html, .mp3, .ogg):
+# GitHub Pages can't serve LFS files, so the game would get a small text
+# pointer instead of the image and fall back to its drawn shapes.
+# Patterns use [xX] so upper-case extensions (e.g. .PSD) are caught too.
+
+# 2D art sources
+*.[pP][sS][dD] filter=lfs diff=lfs merge=lfs -text
+*.[pP][sS][bB] filter=lfs diff=lfs merge=lfs -text
+*.[kK][rR][aA] filter=lfs diff=lfs merge=lfs -text
+*.[cC][lL][iI][pP] filter=lfs diff=lfs merge=lfs -text
+*.[pP][rR][oO][cC][rR][eE][aA][tT][eE] filter=lfs diff=lfs merge=lfs -text
+*.[aA][sS][eE][pP][rR][iI][tT][eE] filter=lfs diff=lfs merge=lfs -text
+*.[aA][sS][eE] filter=lfs diff=lfs merge=lfs -text
+*.[xX][cC][fF] filter=lfs diff=lfs merge=lfs -text
+*.[aA][iI] filter=lfs diff=lfs merge=lfs -text
+*.[aA][fF][dD][eE][sS][iI][gG][nN] filter=lfs diff=lfs merge=lfs -text
+*.[aA][fF][pP][hH][oO][tT][oO] filter=lfs diff=lfs merge=lfs -text
+*.[tT][iI][fF] filter=lfs diff=lfs merge=lfs -text
+*.[tT][iI][fF][fF] filter=lfs diff=lfs merge=lfs -text
+*.[eE][xX][rR] filter=lfs diff=lfs merge=lfs -text
+
+# 3D sources
+*.[bB][lL][eE][nN][dD] filter=lfs diff=lfs merge=lfs -text
+*.[fF][bB][xX] filter=lfs diff=lfs merge=lfs -text
+*.[gG][lL][bB] filter=lfs diff=lfs merge=lfs -text
+*.[sS][pP][pP] filter=lfs diff=lfs merge=lfs -text
+
+# Video and audio masters (game audio should be .mp3 / .ogg, which stay normal)
+*.[mM][pP]4 filter=lfs diff=lfs merge=lfs -text
+*.[mM][oO][vV] filter=lfs diff=lfs merge=lfs -text
+*.[wW][aA][vV] filter=lfs diff=lfs merge=lfs -text
+*.[aA][iI][fF][fF] filter=lfs diff=lfs merge=lfs -text
+*.[fF][lL][aA][cC] filter=lfs diff=lfs merge=lfs -text
+
+# Archives
+*.[zZ][iI][pP] filter=lfs diff=lfs merge=lfs -text
+*.7[zZ] filter=lfs diff=lfs merge=lfs -text
+*.[rR][aA][rR] filter=lfs diff=lfs merge=lfs -text
