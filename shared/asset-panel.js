@@ -197,17 +197,25 @@
     }
 
     // Load everything: your uploads first, then the assets/ folder.
+    // AssetPanel.progress() = 0..1 for a loading bar, AssetPanel.ready = true when done.
+    const total = images.length + (font ? 1 : 0);
+    let done = 0;
+    api.ready = false;
+    api.progress = () => (total ? done / total : 1);
     (async () => {
       db = await openDb();
-      await Promise.all(images.map(async (a) => {
-        const saved = await dbGet(db, dbKey(a.key));
-        if (saved && await useImage(a.key, saved.blob, 'local', saved.name)) return;
-        await loadDefaultImage(a.key);
-      }));
-      if (font) {
+      const fontJob = (async () => {
+        if (!font) return;
         const saved = await dbGet(db, dbKey('__font'));
         if (!(saved && await useFont(saved.blob, 'local', saved.name))) await loadDefaultFont();
-      }
+        done++;
+      })();
+      await Promise.all([fontJob, ...images.map(async (a) => {
+        const saved = await dbGet(db, dbKey(a.key));
+        if (!(saved && await useImage(a.key, saved.blob, 'local', saved.name))) await loadDefaultImage(a.key);
+        done++;
+      })]);
+      api.ready = true;
       if (overlay.classList.contains('open')) render();
     })();
 

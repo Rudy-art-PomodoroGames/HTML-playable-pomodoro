@@ -6,7 +6,7 @@
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 36;
+const BUILD = 37;
 
 // ---- Tunable values (all in one place) ------------------------------------
 
@@ -177,8 +177,8 @@ const CONFIG = {
     counterIconSize: 34,      // juice and minion icons
     backdropOpacity: 0.25,
     buttonHeight: 62,
-    buttonFontSize: 19,
-    buttonSmallFontSize: 15,
+    buttonFontSize: 15.2,
+    buttonSmallFontSize: 12,
     buttonContentTop: 0.06,   // text box inside the button art: top, as a share of the button height
     buttonContentBottom: 0.84, // bottom of the text box (your art's face ends ~85%, the rest is its shadow)
     buttonContentPadding: 0.1, // empty space left and right, as a share of the button width
@@ -207,6 +207,19 @@ const CONFIG = {
   clearDelay: 1.2,          // seconds between zones
   showLeader: false,        // debug: draw the invisible leader
   showColliders: false,     // debug: draw collider circles (resources cyan, minions pink)
+  loading: {
+    text: 'Loading...',
+    fontSize: 20,
+    backgroundColor: '#1f3a24',
+    barColor: '#7ee081',
+    barWidth: 0.6,          // × game width
+    barHeight: 18,
+    maxWait: 10,            // seconds: start anyway (with drawn shapes) if loading takes longer
+  },
+  cheat: {
+    size: 50,              // invisible square in the top-left corner (px)
+    doubleTapTime: 0.4,     // max seconds between the 2 taps
+  },
 };
 
 // Explanations shown when tapping a setting's name in the ⚙ panel.
@@ -316,6 +329,15 @@ const CONFIG_HELP = {
   'ui.hireColor': 'Color of the drawn Hire button (not used once you load button art in 🎨).',
   'ui.mergeColor': 'Color of the drawn Merge button (not used once you load button art in 🎨).',
   'ui.disabledOpacity': 'How visible a button is when you can\'t use it (not enough juice, nothing to merge).',
+  'loading.text': 'Text above the loading bar shown while the art loads.',
+  'loading.fontSize': 'Size of the loading text.',
+  'loading.backgroundColor': 'Background color of the loading screen.',
+  'loading.barColor': 'Fill color of the loading bar.',
+  'loading.barWidth': 'Loading bar width × the game width (0.6 = 60%).',
+  'loading.barHeight': 'Loading bar height in px.',
+  'loading.maxWait': 'Seconds before the game starts anyway if the art is still loading (missing art then shows as drawn shapes).',
+  'cheat.size': 'Size of the invisible top-left square. Double-tap it to show or hide ⚙, 🎨 and the build number.',
+  'cheat.doubleTapTime': 'Max seconds between the 2 taps on the cheat square.',
   'ui.pressScale': 'Button size for a moment after a tap. 0.92 = shrinks 8%, 1 = no bounce.',
   maxPixelRatio: 'How sharp the game draws. 2 = sharp on phones and computers (recommended). 1 = softer but lighter. 3 = full iPhone sharpness, more work for the phone. Applies when the page is resized or reloaded.',
   showLeader: 'Debug: show the invisible leader the swarm follows, as a small white circle.',
@@ -862,10 +884,21 @@ function toCanvas(e) {
   };
 }
 
+let lastCheatTap = 0;
 // Tap only: each tap replaces any previous move. Holding or dragging does nothing extra.
 canvas.addEventListener('pointerdown', (e) => {
   e.preventDefault();
   const p = toCanvas(e);
+  // Cheat: double-tap the invisible top-left square to show/hide the tuning tools.
+  if (p.x < CONFIG.cheat.size && p.y < CONFIG.cheat.size) {
+    const now = performance.now() / 1000;
+    if (now - lastCheatTap < CONFIG.cheat.doubleTapTime) {
+      lastCheatTap = 0;
+      document.body.classList.toggle('tools-on');
+    } else lastCheatTap = now;
+    return;
+  }
+  if (isLoading()) return;
   const btn = buttonAt(p);
   if (btn) {
     state.press = { key: btn, t: 0.12 };
@@ -1298,7 +1331,7 @@ function draw() {
   drawButtons();
 
   ctx.globalAlpha = 0.5;
-  outlinedText(`build ${BUILD}`, W / 2, 54, { size: 9, align: 'center', width: 2 }); // under ⚙ 🎨
+  if (document.body.classList.contains('tools-on')) outlinedText(`build ${BUILD}`, W / 2, 54, { size: 9, align: 'center', width: 2 }); // under ⚙ 🎨
   ctx.globalAlpha = 1;
 
   if (state.flashT > 0) {
@@ -1511,11 +1544,44 @@ function buttonAt(p) {
 
 // ---- Loop ------------------------------------------------------------------
 
+// Loading screen: shown until all art and the font are loaded (or loading.maxWait runs out),
+// so the drawn placeholder shapes never flash before the real art.
+let loadTime = 0;
+let loadShown = 0;          // smoothed bar fill
+function isLoading() {
+  return !!window.AssetPanel && !AssetPanel.ready && loadTime < CONFIG.loading.maxWait;
+}
+function drawLoading() {
+  const L = CONFIG.loading;
+  ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
+  ctx.fillStyle = L.backgroundColor;
+  ctx.fillRect(0, 0, W, H);
+  const target = AssetPanel.progress ? AssetPanel.progress() : 0;
+  loadShown += (target - loadShown) * 0.25;
+  const bw = W * L.barWidth, bh = L.barHeight, bx = (W - bw) / 2, by = H / 2;
+  outlinedText(L.text, W / 2, by - 24, { size: L.fontSize, align: 'center' });
+  roundRectPath(ctx, bx, by, bw, bh, bh / 2);
+  ctx.fillStyle = CONFIG.ui.outlineColor;
+  ctx.fill();
+  const pad = 3;
+  if (loadShown > 0.01) {
+    roundRectPath(ctx, bx + pad, by + pad, Math.max(bh - pad * 2, (bw - pad * 2) * loadShown), bh - pad * 2, (bh - pad * 2) / 2);
+    ctx.fillStyle = L.barColor;
+    ctx.fill();
+  }
+}
+
 let last = performance.now();
 function frame() {
   const now = performance.now();
   const dt = Math.min(Math.max((now - last) / 1000, 0), 0.05);
   last = now;
+  if (isLoading()) {
+    loadTime += dt;
+    drawLoading();
+    requestAnimationFrame(frame);
+    return;
+  }
   update(dt);
   if (state.press && (state.press.t -= dt) <= 0) state.press = null; // button press bounce
   draw();
