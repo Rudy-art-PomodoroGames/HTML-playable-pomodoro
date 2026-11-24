@@ -6,7 +6,7 @@
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 34;
+const BUILD = 35;
 
 // ---- Tunable values (all in one place) ------------------------------------
 
@@ -166,7 +166,29 @@ const CONFIG = {
     color: '#ffe066',
   },
 
-  maxPixelRatio: 2,         // sharpness cap: real pixels per screen point (1 = old soft look, 3 = full iPhone sharpness, heavier)
+  // Game UI: HUD counters and the Hire / Merge buttons inside the play area.
+  ui: {
+    textColor: '#ffffff',
+    outlineColor: '#1b2a1e',
+    outlineWidth: 0.28,       // outline thickness × text size
+    hudScale: 0.85,           // size of the whole top HUD (zone, juice, minions)
+    zoneFontSize: 24,
+    counterFontSize: 20,
+    counterIconSize: 34,      // juice and minion icons
+    backdropOpacity: 0.25,
+    buttonHeight: 62,
+    buttonFontSize: 19,
+    buttonSmallFontSize: 15,
+    buttonContentTop: 0.06,   // text box inside the button art: top, as a share of the button height
+    buttonContentBottom: 0.84, // bottom of the text box (your art's face ends ~85%, the rest is its shadow)
+    buttonContentPadding: 0.1, // empty space left and right, as a share of the button width
+    hireColor: '#3aa0f0',
+    mergeColor: '#a45be8',
+    disabledOpacity: 0.55,
+    pressScale: 0.92,         // button size while tapped
+  },
+
+  maxPixelRatio: 2,        // sharpness cap: real pixels per screen point (1 = old soft look, 3 = full iPhone sharpness, heavier)
 
   // Drawing size of each image, × its normal size (1 = unchanged). Set from
   // the Scale slider on each row in 🎨. Only the picture changes, not colliders.
@@ -275,6 +297,24 @@ const CONFIG_HELP = {
   clearDelay: 'Pause in seconds between clearing a zone and the next zone appearing.',
   'zone.colliderScale': 'Size of the round collider minions bump into and hit, compared to the resource art as drawn (Scale in 🎨 included). 1 = a circle touching the art\'s edges, 0.8 = smaller so minions overlap the art a bit, 1.2 = bigger.',
   showColliders: 'Debug: draw collider circles to check them against your art: resources in cyan, minions in pink.',
+  'ui.textColor': 'Color of all game text (HUD, buttons, zone banner).',
+  'ui.outlineColor': 'Color of the outline around all game text.',
+  'ui.outlineWidth': 'Outline thickness compared to the text size. 0.28 = thick cartoon outline, 0.15 = thin.',
+  'ui.hudScale': 'Size of the whole top HUD: zone, juice counter and minion counter. 0.85 = 85%. Keeps each side in its corner.',
+  'ui.buttonContentTop': 'Top of the area where button text is drawn, as a share of the button height. Raise it if text touches the top of your button art.',
+  'ui.buttonContentBottom': 'Bottom of the button text area, as a share of the button height. Lower it if text sits on your art\'s bottom edge or shadow.',
+  'ui.buttonContentPadding': 'Empty space kept left and right of the button text, as a share of the button width. Text shrinks to fit if it\'s too long.',
+  'ui.zoneFontSize': 'Text size of "Zone N" at the top left.',
+  'ui.counterFontSize': 'Text size of the juice and minion counters.',
+  'ui.counterIconSize': 'Size of the juice and minion icons next to the counters.',
+  'ui.backdropOpacity': 'How visible the backdrop behind the counters is. 0 = invisible, 1 = solid.',
+  'ui.buttonHeight': 'Height of the Hire and Merge buttons, in pixels. The swarm can\'t be sent below them.',
+  'ui.buttonFontSize': 'Text size of the first line on the buttons ("Hire minion", "Merge").',
+  'ui.buttonSmallFontSize': 'Text size of the second line on the buttons (price, levels).',
+  'ui.hireColor': 'Color of the drawn Hire button (not used once you load button art in 🎨).',
+  'ui.mergeColor': 'Color of the drawn Merge button (not used once you load button art in 🎨).',
+  'ui.disabledOpacity': 'How visible a button is when you can\'t use it (not enough juice, nothing to merge).',
+  'ui.pressScale': 'Button size for a moment after a tap. 0.92 = shrinks 8%, 1 = no bounce.',
   maxPixelRatio: 'How sharp the game draws. 2 = sharp on phones and computers (recommended). 1 = softer but lighter. 3 = full iPhone sharpness, more work for the phone. Applies when the page is resized or reloaded.',
   showLeader: 'Debug: show the invisible leader the swarm follows, as a small white circle.',
 };
@@ -329,11 +369,12 @@ const state = {
   purchases: 0,             // minions bought this run (sets the hire price)
   minions: [],
   resources: [],
-  leader: { x: W / 2, y: H - 90, target: null },
+  leader: { x: W / 2, y: H - 130, target: null }, // starts above the buttons
   guide: null,              // { x, y } tapped point the swarm is heading to
   popups: [],               // floating damage numbers
   splashes: [],             // juice drops flying off eaten resources
   mergeFx: [],              // merge effects playing on new minions
+  press: null,              // button just tapped { key, t }, for the press bounce
   paused: false,
   clearing: 0,
   flash: '',
@@ -791,8 +832,6 @@ function drawMergeFx() {
   }
 }
 
-document.getElementById('hire').addEventListener('click', hire);
-document.getElementById('merge').addEventListener('click', merge);
 
 function restart() {
   state.wood = 0;
@@ -805,7 +844,7 @@ function restart() {
   state.splashes = [];
   state.mergeFx = [];
   state.leader.x = W / 2;
-  state.leader.y = H - 90;
+  state.leader.y = H - 130;
   state.minions = [];
   for (let i = 0; i < CONFIG.startMinions; i++) state.minions.push(spawnNearLeader(1));
   startZone();
@@ -824,7 +863,16 @@ function toCanvas(e) {
 // Tap only: each tap replaces any previous move. Holding or dragging does nothing extra.
 canvas.addEventListener('pointerdown', (e) => {
   e.preventDefault();
-  state.guide = toCanvas(e);
+  const p = toCanvas(e);
+  const btn = buttonAt(p);
+  if (btn) {
+    state.press = { key: btn, t: 0.12 };
+    if (btn === 'hire') hire(); else merge();
+    return;
+  }
+  // Keep the swarm above the buttons.
+  p.y = Math.min(p.y, buttonRects().hire.y - 20);
+  state.guide = p;
   state.leader.target = null;
 });
 
@@ -1049,6 +1097,14 @@ const ASSETS = [
     size: '128×128, or a row of square frames that get more eaten as HP drops (e.g. 512×128 = 4 states)',
     draw: (c, w, h) => drawResourceShape(c, w / 2, h / 2, w * 0.7, CONFIG.resources[type].color),
   })),
+  { key: 'icon_juice', label: 'Juice icon (currency)', size: '64×64, transparent',
+    draw: (c, w, h) => drawJuiceShape(c, w / 2, h / 2, h * 0.9) },
+  { key: 'hud_backdrop', label: 'Counter backdrop', size: '256×64 (stretched behind the counters, drawn see-through by ui.backdropOpacity)',
+    draw: (c, w, h) => { c.fillStyle = '#000'; roundRectPath(c, 0, h * 0.3, w, h * 0.4, h * 0.2); c.fill(); } },
+  { key: 'button_hire', label: 'Hire button', size: '680×256 (stretched to the button; text is drawn on top, inside ui.buttonContent*)',
+    draw: (c, w, h) => drawButtonShape(c, 2, h * 0.3, w - 4, h * 0.38, CONFIG.ui.hireColor) },
+  { key: 'button_merge', label: 'Merge button', size: '680×256 (stretched to the button; text is drawn on top, inside ui.buttonContent*)',
+    draw: (c, w, h) => drawButtonShape(c, 2, h * 0.3, w - 4, h * 0.38, CONFIG.ui.mergeColor) },
   { key: 'merge_vfx', label: 'Merge effect (sprite sheet)', size: 'one row of square frames, e.g. 6 × 256 = 1536×256; plays once on the new minion',
     draw: (c, w, h) => {
       c.strokeStyle = '#fff6b0'; c.lineWidth = 4;
@@ -1168,16 +1224,8 @@ function draw() {
     }
     if (CONFIG.hpText.show) {
       // Drawn at the shaken position so the number shakes with the resource.
-      const size = CONFIG.resources[r.type].hpFontSize;
-      ctx.font = `${CONFIG.textWeight} ${size}px ${gameFont()}`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-      ctx.strokeText(String(Math.max(0, Math.ceil(r.hp))), x, y + 1);
-      ctx.fillStyle = CONFIG.hpText.color;
-      ctx.fillText(String(Math.max(0, Math.ceil(r.hp))), x, y + 1);
-      ctx.textBaseline = 'alphabetic';
+      outlinedText(String(Math.max(0, Math.ceil(r.hp))), x, y + 1,
+        { size: CONFIG.resources[r.type].hpFontSize, color: CONFIG.hpText.color, align: 'center' });
     }
   }
 
@@ -1187,14 +1235,7 @@ function draw() {
     const k = Math.min(1, p.age / pc.duration);
     const pop = 1 + (pc.popScale - 1) * Math.max(0, 1 - p.age / 0.12);
     ctx.globalAlpha = 1 - k;
-    ctx.font = `${CONFIG.textWeight} ${Math.round(pc.fontSize * pop)}px ${gameFont()}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-    ctx.strokeText(p.text, p.x, p.y - pc.rise * k);
-    ctx.fillStyle = pc.color;
-    ctx.fillText(p.text, p.x, p.y - pc.rise * k);
+    outlinedText(p.text, p.x, p.y - pc.rise * k, { size: Math.round(pc.fontSize * pop), color: pc.color, align: 'center' });
   }
   ctx.globalAlpha = 1;
   ctx.textBaseline = 'alphabetic';
@@ -1237,38 +1278,219 @@ function draw() {
     ctx.stroke();
   }
 
-  ctx.fillStyle = '#e8f5ea';
-  ctx.font = `${CONFIG.textWeight} 16px ${gameFont()}`;
-  ctx.textAlign = 'left';
-  ctx.fillText(`Zone ${state.zone + 1}`, 54, 24); // leaves room for the ⚙ button
-  ctx.fillText(`Wood ${Math.floor(state.wood)}`, 54, 46);
-  ctx.textAlign = 'right';
-  ctx.fillText(`Minions ${state.minions.length}`, W - 12, 24);
+  drawHud();
+  drawButtons();
 
-  ctx.globalAlpha = 0.4;
-  ctx.font = `11px ${gameFont()}`;
-  ctx.textAlign = 'right';
-  ctx.fillText(`build ${BUILD}`, W - 8, H - 8);
+  ctx.globalAlpha = 0.5;
+  outlinedText(`build ${BUILD}`, W / 2, 54, { size: 9, align: 'center', width: 2 }); // under ⚙ 🎨
   ctx.globalAlpha = 1;
 
   if (state.flashT > 0) {
     ctx.globalAlpha = Math.min(1, state.flashT);
-    ctx.textAlign = 'center';
-    ctx.font = `${CONFIG.textWeight} 26px ${gameFont()}`;
-    ctx.fillText(state.flash, W / 2, H / 2);
+    outlinedText(state.flash, W / 2, H / 2, { size: 30, align: 'center' });
     ctx.globalAlpha = 1;
   }
 }
 
-function syncButtons() {
-  const hireBtn = document.getElementById('hire');
-  const mergeBtn = document.getElementById('merge');
+// ---- Game UI (HUD + buttons, all drawn on the canvas) ------------------------
+
+// Text with an outline, the way all game text is drawn.
+function outlinedText(text, x, y, { size = 16, color = CONFIG.ui.textColor, align = 'left', baseline = 'middle', width } = {}) {
+  ctx.font = `${CONFIG.textWeight} ${size}px ${gameFont()}`;
+  ctx.textAlign = align;
+  ctx.textBaseline = baseline;
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = width != null ? width : Math.max(2, size * CONFIG.ui.outlineWidth);
+  ctx.strokeStyle = CONFIG.ui.outlineColor;
+  ctx.strokeText(text, x, y);
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y);
+  const w = ctx.measureText(text).width;
+  ctx.textBaseline = 'alphabetic';
+  return w;
+}
+
+// Text size that fits maxW (never bigger than size), outline included.
+function fitSize(text, size, maxW) {
+  ctx.font = `${CONFIG.textWeight} ${size}px ${gameFont()}`;
+  const w = ctx.measureText(text).width + size * CONFIG.ui.outlineWidth;
+  return w > maxW ? size * maxW / w : size;
+}
+
+function roundRectPath(c, x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  c.beginPath();
+  c.moveTo(x + r, y);
+  c.arcTo(x + w, y, x + w, y + h, r);
+  c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r);
+  c.arcTo(x, y, x + w, y, r);
+  c.closePath();
+}
+
+// Low-opacity pill behind a HUD counter (hud_backdrop art, else a dark pill).
+function drawBackdrop(x, y, w, h) {
+  const img = art('hud_backdrop');
+  ctx.save();
+  ctx.globalAlpha = CONFIG.ui.backdropOpacity;
+  if (img) ctx.drawImage(img, x, y, w, h);
+  else { ctx.fillStyle = '#000'; roundRectPath(ctx, x, y, w, h, h / 2); ctx.fill(); }
+  ctx.restore();
+}
+
+function drawJuiceShape(c, x, y, s) {
+  // A juice drop: round bottom, pointed top, with a shine.
+  c.save();
+  c.translate(x, y);
+  c.fillStyle = '#ff9f1a';
+  c.strokeStyle = '#b85c00';
+  c.lineWidth = Math.max(1, s * 0.08);
+  c.beginPath();
+  c.moveTo(0, -s * 0.5);
+  c.bezierCurveTo(s * 0.18, -s * 0.22, s * 0.4, 0, s * 0.4, s * 0.12);
+  c.arc(0, s * 0.12, s * 0.4, 0, Math.PI);
+  c.bezierCurveTo(-s * 0.4, 0, -s * 0.18, -s * 0.22, 0, -s * 0.5);
+  c.fill();
+  c.stroke();
+  c.fillStyle = 'rgba(255,255,255,0.7)';
+  c.beginPath();
+  c.ellipse(-s * 0.15, s * 0.05, s * 0.07, s * 0.14, 0.3, 0, Math.PI * 2);
+  c.fill();
+  c.restore();
+}
+
+// Juice icon centered at x, y, s pixels tall.
+function drawJuiceIcon(x, y, s) {
+  const img = art('icon_juice');
+  if (img) ctx.drawImage(img, x - s / 2, y - s / 2, s, s);
+  else drawJuiceShape(ctx, x, y, s);
+}
+
+// Minion level 1 art as an icon (falls back to the drawn minion).
+function drawMinionIcon(x, y, s) {
+  const img = art('minion_lv1');
+  if (img) ctx.drawImage(img, x - s / 2, y - s / 2, s, s);
+  else { ctx.save(); ctx.translate(x, y); drawMinionShape(ctx, s * 0.42, CONFIG.minion.colors[0]); ctx.restore(); }
+}
+
+function drawHud() {
+  const u = CONFIG.ui;
+  const k = Math.max(0.1, u.hudScale);
+  // Top left: zone, then the juice counter on a backdrop (scaled from the top-left corner).
+  ctx.save();
+  ctx.scale(k, k);
+  outlinedText(`Zone ${state.zone + 1}`, 14, 26, { size: u.zoneFontSize });
+  const icon = u.counterIconSize;
+  const by = 46, bh = icon * 0.8;
+  const juice = String(Math.floor(state.wood));
+  ctx.font = `${CONFIG.textWeight} ${u.counterFontSize}px ${gameFont()}`;
+  const jw = ctx.measureText(juice).width;
+  drawBackdrop(14 + icon * 0.4, by + (icon - bh) / 2, icon * 0.6 + 10 + jw + 14, bh);
+  drawJuiceIcon(14 + icon / 2, by + icon / 2, icon);
+  outlinedText(juice, 14 + icon + 8, by + icon / 2 + 1, { size: u.counterFontSize });
+  ctx.restore();
+
+  // Top right: minion count on a backdrop, minion level 1 icon on its left
+  // (scaled from the top-right corner).
+  ctx.save();
+  ctx.translate(W, 0);
+  ctx.scale(k, k);
+  ctx.translate(-W, 0);
+  const count = String(state.minions.length);
+  ctx.font = `${CONFIG.textWeight} ${u.counterFontSize}px ${gameFont()}`;
+  const cw = ctx.measureText(count).width;
+  const right = W - 14;
+  const boxW = icon * 0.6 + 10 + cw + 14;
+  drawBackdrop(right - boxW, 12 + (icon - bh) / 2, boxW, bh);
+  drawMinionIcon(right - boxW - icon * 0.1, 12 + icon / 2, icon * 1.1);
+  outlinedText(count, right - 14, 12 + icon / 2 + 1, { size: u.counterFontSize, align: 'right' });
+  ctx.restore();
+}
+
+// Where the two buttons sit, in game space.
+function buttonRects() {
+  const u = CONFIG.ui;
+  const m = 12, gap = 10;
+  const w = (W - m * 2 - gap) / 2;
+  const y = H - m - u.buttonHeight;
+  return {
+    hire: { x: m, y, w, h: u.buttonHeight },
+    merge: { x: m + w + gap, y, w, h: u.buttonHeight },
+  };
+}
+
+// Glossy rounded button: darker bottom edge, light top shine.
+function drawButtonShape(c, x, y, w, h, color) {
+  const r = h * 0.38;
+  c.save();
+  c.fillStyle = 'rgba(0,0,0,0.35)';
+  roundRectPath(c, x, y + 4, w, h, r); c.fill();             // bottom edge
+  c.fillStyle = color;
+  roundRectPath(c, x, y, w, h, r); c.fill();
+  c.fillStyle = 'rgba(255,255,255,0.28)';
+  roundRectPath(c, x + 6, y + 4, w - 12, h * 0.36, r * 0.7); c.fill(); // shine
+  c.lineWidth = 2.5;
+  c.strokeStyle = 'rgba(0,0,0,0.35)';
+  roundRectPath(c, x, y, w, h, r); c.stroke();
+  c.restore();
+}
+
+function drawButtons() {
+  const u = CONFIG.ui;
+  const rects = buttonRects();
   const cost = hireCost();
-  hireBtn.textContent = `Hire minion (${cost} wood)`;
-  hireBtn.disabled = state.wood < cost;
   const pair = nextMergePair();
-  mergeBtn.textContent = pair ? `Merge Lv${pair[0].level} → Lv${pair[0].level + 1}` : 'Merge';
-  mergeBtn.disabled = !pair;
+  const buttons = [
+    { key: 'hire', rect: rects.hire, color: u.hireColor, enabled: state.wood >= cost, art: 'button_hire',
+      line1: 'Hire minion', line2: (cx, y, maxW) => {
+        const txt = String(cost);
+        let size = u.buttonSmallFontSize;
+        ctx.font = `${CONFIG.textWeight} ${size}px ${gameFont()}`;
+        const full = size * 1.25 + 4 + ctx.measureText(txt).width; // icon + gap + price
+        if (full > maxW) size *= maxW / full;
+        const s = size * 1.25;
+        ctx.font = `${CONFIG.textWeight} ${size}px ${gameFont()}`;
+        const x0 = cx - (s + 4 + ctx.measureText(txt).width) / 2;
+        drawJuiceIcon(x0 + s / 2, y, s);
+        outlinedText(txt, x0 + s + 4, y + 1, { size });
+      } },
+    { key: 'merge', rect: rects.merge, color: u.mergeColor, enabled: !!pair, art: 'button_merge',
+      line1: 'Merge', line2: (cx, y, maxW) => {
+        const txt = pair ? `Lv${pair[0].level} → Lv${pair[0].level + 1}` : 'No pair';
+        outlinedText(txt, cx, y + 1, { size: fitSize(txt, u.buttonSmallFontSize, maxW), align: 'center' });
+      } },
+  ];
+  for (const b of buttons) {
+    const { x, y, w, h } = b.rect;
+    const press = state.press && state.press.key === b.key ? 1 - u.pressScale : 0;
+    ctx.save();
+    ctx.globalAlpha = b.enabled ? 1 : u.disabledOpacity;
+    ctx.translate(x + w / 2, y + h / 2);
+    ctx.scale(1 - press, 1 - press);
+    ctx.translate(-(x + w / 2), -(y + h / 2));
+    const img = art(b.art);
+    if (img) ctx.drawImage(img, x, y, w, h);
+    else drawButtonShape(ctx, x, y, w, h, b.color);
+    // Text stays inside the button face: the box between buttonContentTop and
+    // buttonContentBottom (share of the height), minus buttonContentPadding on each side.
+    const cx = x + w / 2;
+    const top = y + h * u.buttonContentTop;
+    const boxH = h * (u.buttonContentBottom - u.buttonContentTop);
+    const maxW = w * (1 - 2 * u.buttonContentPadding);
+    outlinedText(b.line1, cx, top + boxH * 0.32, { size: fitSize(b.line1, u.buttonFontSize, maxW), align: 'center' });
+    b.line2(cx, top + boxH * 0.74, maxW);
+    ctx.restore();
+  }
+}
+
+// The button under a game-space point, or null.
+function buttonAt(p) {
+  const rects = buttonRects();
+  for (const key of ['hire', 'merge']) {
+    const r = rects[key];
+    if (p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h) return key;
+  }
+  return null;
 }
 
 // ---- Loop ------------------------------------------------------------------
@@ -1279,8 +1501,8 @@ function frame() {
   const dt = Math.min(Math.max((now - last) / 1000, 0), 0.05);
   last = now;
   update(dt);
+  if (state.press && (state.press.t -= dt) <= 0) state.press = null; // button press bounce
   draw();
-  syncButtons();
   requestAnimationFrame(frame);
 }
 

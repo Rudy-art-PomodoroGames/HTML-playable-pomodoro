@@ -9,28 +9,23 @@
     :root { color-scheme: dark; }
     html, body { margin: 0; height: 100%; background: #0f1a12; font-family: var(--game-font, system-ui, sans-serif); color: #e8f5ea; }
     body { display: flex; flex-direction: column; align-items: center; justify-content: center; }
-    /* Game width: fill the phone width, but leave room for the buttons below (360x560 canvas). */
-    :root { --w: min(calc(100vw - 32px), calc((100vh - 110px) * 0.643)); }
-    @supports (height: 100dvh) { :root { --w: min(calc(100vw - 32px), calc((100dvh - 110px) * 0.643)); } }
+    /* Game width: fill the phone, keeping the 360x560 canvas shape. Buttons are drawn inside it. */
+    :root { --w: min(calc(100vw - 32px), calc((100vh - 32px) * 0.643)); }
+    @supports (height: 100dvh) { :root { --w: min(calc(100vw - 32px), calc((100dvh - 32px) * 0.643)); } }
     .stage { position: relative; width: var(--w); }
     canvas { display: block; width: 100%; height: auto; background: #1f3a24;
       border-radius: 12px; touch-action: none; -webkit-user-select: none; user-select: none; }
-    .bar { display: flex; gap: 8px; margin-top: 12px; width: var(--w); }
-    .bar button { flex: 1; min-width: 0; padding: 12px 8px; font: inherit; font-size: 15px; font-weight: 600; border: 0;
-      border-radius: 10px; background: #3d7a4a; color: #fff; cursor: pointer; }
-    .bar button:disabled { background: #2a3a2e; color: #7a8a7e; cursor: default; }
+    /* Tuning buttons (⚙ and 🎨) at the top center, out of the way of the HUD. */
+    .stage .sp-gear { left: calc(50% - 40px); }
+    .stage .ap-btn { top: 8px; left: calc(50% + 4px); }
   </style>
 </head>
 <body>
   <div class="stage">
     <canvas id="game" width="360" height="560"></canvas>
   </div>
-  <div class="bar">
-    <button id="hire">Hire minion</button>
-    <button id="merge">Merge</button>
-  </div>
-  <script src="../shared/settings-panel.js?v=34"></script>
-  <script src="../shared/asset-panel.js?v=34"></script>
-  <script src="game.js?v=34"></script>
+  <script src="../shared/settings-panel.js?v=35"></script>
+  <script src="../shared/asset-panel.js?v=35"></script>
+  <script src="game.js?v=35"></script>
 </body>
 </html>
