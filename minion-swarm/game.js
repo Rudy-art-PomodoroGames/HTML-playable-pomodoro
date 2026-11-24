@@ -6,7 +6,7 @@
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 33;
+const BUILD = 34;
 
 // ---- Tunable values (all in one place) ------------------------------------
 
@@ -182,7 +182,7 @@ const CONFIG = {
 
   clearDelay: 1.2,          // seconds between zones
   showLeader: false,        // debug: draw the invisible leader
-  showColliders: true,      // debug: draw collider circles (resources cyan, minions pink)
+  showColliders: false,     // debug: draw collider circles (resources cyan, minions pink)
 };
 
 // Explanations shown when tapping a setting's name in the ⚙ panel.
