@@ -7,7 +7,7 @@ game's built-in drawn shape (or the default font), so the game never breaks.
 | --- | --- | --- |
 | `background.webp` / `.png` | Play area background (stretched to fill) | 720×1120 |
 | `minion_lv1.webp` … `minion_lv8.webp` (or `.png`) | Minion art per merge level (levels above 8 reuse them in a cycle) | 128×128, transparent |
-| `minion_eat.webp` / `.png` | Eating animation sprite sheet, looped while a minion hits a resource: one row of square frames, frame count = width ÷ height. None = normal sprite | e.g. 512×128 (4 frames), same framing as `minion_lv1` |
+| `minion_eat.webp` (level 1), `minion_eat_lv2.webp` … `minion_eat_lv8.webp` (or `.png`) | Eating animation sprite sheet per minion level, looped while a minion hits a resource: one row of square frames, frame count = width ÷ height. A level without its own sheet uses level 1's; none at all = normal sprite | e.g. 512×128 (4 frames), same framing as `minion_lv1` |
 | `minion_leg.webp` / `.png` | One leg, used for both (top center of the image is the hip it swings from) | 32×64, transparent |
 | `minion_shadow.webp` / `.png` | Shadow under every minion (drawn see-through, set darkness with `shadow.opacity`) | 128×128, transparent |
 | `resource_1.webp` … `resource_6.webp` (or `.png`) | The 6 resource types (size, HP, wood and spawn weight in ⚙ → resources). One image, or a sprite sheet: one row of square frames from untouched to almost eaten, picked by HP left (4 frames = 100/75/50/25%) | 128×128, or 512×128 for 4 states |

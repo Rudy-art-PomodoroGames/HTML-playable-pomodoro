@@ -6,7 +6,7 @@
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 35;
+const BUILD = 36;
 
 // ---- Tunable values (all in one place) ------------------------------------
 
@@ -195,7 +195,9 @@ const CONFIG = {
   artScale: {
     minion_lv1: 1, minion_lv2: 0.85, minion_lv3: 0.75, minion_lv4: 0.65,
     minion_lv5: 0.7, minion_lv6: 1, minion_lv7: 1, minion_lv8: 1,
-    minion_eat: 1, minion_leg: 1, minion_shadow: 1,
+    minion_eat: 1, minion_eat_lv2: 1, minion_eat_lv3: 1, minion_eat_lv4: 1,
+    minion_eat_lv5: 1, minion_eat_lv6: 1, minion_eat_lv7: 1, minion_eat_lv8: 1,
+    minion_leg: 1, minion_shadow: 1,
     resource_1: 1.4, resource_2: 1.25, resource_3: 2.25, resource_4: 1.7, resource_5: 2.2, resource_6: 1.6,
     splash_drop: 1, merge_vfx: 1, tap_marker: 1,
   },
@@ -246,7 +248,7 @@ const CONFIG_HELP = {
   'bounce.fade': 'How quickly the bounce fades in when a minion starts moving and out when it stops.',
   'wobble.show': 'While walking, minions rock left and right from the bottom center of their sprite, on top of the bounce.',
   'wobble.angle': 'How far a minion tilts to each side while walking, in degrees.',
-  'eat.show': 'While hitting a resource, minions loop the eating sprite sheet you load in 🎨 (under Minion level 1 → Eating): one row of square frames, the frame count is worked out from its width. With no sheet loaded, they keep their normal sprite.',
+  'eat.show': 'While hitting a resource, minions loop their level\'s eating sprite sheet from 🎨 (Minion level N → Eating): one row of square frames, the frame count is worked out from its width. A level without its own sheet uses level 1\'s; with none at all, minions keep their normal sprite.',
   'eat.fps': 'Speed of the eating animation, in frames per second.',
   'legs.show': 'Draw two legs behind each minion. They swing from the hip while walking and ease back to straight when it stops.',
   'legs.angle': 'How far each leg swings forward and back while walking, in degrees.',
@@ -887,14 +889,22 @@ const MINION_ART_LEVELS = 8; // minion_lv1..lv8; higher levels reuse them in a c
 // Returns the frame to draw { img, sx, sw, sh }, or null for the normal sprite.
 function eatFrame(m) {
   if (!CONFIG.eat.show || !m.attacking) return null;
-  const sheet = art('minion_eat');
+  // This level's own sheet, else level 1's, else none (normal sprite).
+  let key = eatArtKey(artLevel(m.level));
+  let sheet = art(key);
+  if (!sheet) { key = eatArtKey(1); sheet = art(key); }
   if (!sheet) return null;
   const sh = sheet.naturalHeight;
   const count = Math.max(1, Math.round(sheet.naturalWidth / sh));
   const sw = sheet.naturalWidth / count;
   const i = Math.floor(m.eatT * Math.max(0.1, CONFIG.eat.fps)) % count;
-  return { img: sheet, sx: i * sw, sw, sh };
+  return { img: sheet, sx: i * sw, sw, sh, scaleKey: key };
 }
+
+// Level 1..8 whose art a minion uses (higher levels cycle).
+const artLevel = (level) => ((level - 1) % MINION_ART_LEVELS) + 1;
+// Eating sheet key per art level: level 1 keeps its original name.
+const eatArtKey = (lv) => (lv === 1 ? 'minion_eat' : `minion_eat_lv${lv}`);
 
 const gameFont = () => (window.AssetPanel ? AssetPanel.fontStack : 'system-ui, sans-serif');
 
@@ -1080,14 +1090,20 @@ const ASSETS = [
       if (level > 1) drawLevelNumber(c, w * 0.38, level);
     },
   })),
-  { key: 'minion_eat', label: 'Minion eating (sprite sheet)', parent: 'minion_lv1', group: 'Eating',
-    size: 'one row of square frames, e.g. 512×128 = 4 frames; same framing as minion_lv1 (optional)',
+  // Eating sheet per level, each folded under its level in 🎨. Level 1's is
+  // minion_eat; a level without its own sheet uses level 1's.
+  ...Array.from({ length: MINION_ART_LEVELS }, (_, i) => ({
+    key: eatArtKey(i + 1), label: `Minion level ${i + 1} eating (sprite sheet)`, parent: `minion_lv${i + 1}`, group: 'Eating',
+    size: i === 0
+      ? 'one row of square frames, e.g. 512×128 = 4 frames; same framing as minion_lv1 (optional)'
+      : `one row of square frames, same framing as minion_lv${i + 1} (optional; empty = level 1's eating sheet)`,
     draw: (c, w, h) => {
-      // Placeholder thumbnail only; with no sheet the game keeps the normal sprite.
+      // Placeholder thumbnail only; the game falls back as described above.
       c.globalAlpha = 0.35;
       c.translate(w / 2, h / 2);
-      drawMinionShape(c, w * 0.38, CONFIG.minion.colors[0]);
-    } },
+      drawMinionShape(c, w * 0.38, CONFIG.minion.colors[i % CONFIG.minion.colors.length]);
+    },
+  })),
   { key: 'minion_leg', label: 'Minion leg', size: '32×64 (transparent, top center = hip)',
     draw: (c, w, h) => { c.translate(w / 2, 0); drawLegShape(c, w * 0.5, h, CONFIG.legs.color); } },
   { key: 'minion_shadow', label: 'Minion shadow', size: '128×128 (transparent, drawn see-through by shadow.opacity)',
@@ -1198,7 +1214,7 @@ function draw() {
     const fc = CONFIG.facing;
     const mirror = fc.flip && m.face !== (fc.artFacesRight ? 1 : -1);
     if (mirror) { ctx.save(); ctx.scale(-1, 1); }
-    const dr = eat ? rad * artScale('minion_eat') : rad; // eating sheet can be scaled on top
+    const dr = eat ? rad * artScale(eat.scaleKey) : rad; // eating sheet can be scaled on top
     if (eat) ctx.drawImage(eat.img, eat.sx, 0, eat.sw, eat.sh, -dr, -dr, dr * 2, dr * 2);
     else if (img) ctx.drawImage(img, -dr, -dr, dr * 2, dr * 2);
     else drawMinionShape(ctx, dr, m.type.color);
