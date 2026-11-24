@@ -6,7 +6,7 @@
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 32;
+const BUILD = 33;
 
 // ---- Tunable values (all in one place) ------------------------------------
 
@@ -22,6 +22,7 @@ const CONFIG = {
     baseSpeed: 110, speedMultPerLevel: 0.93,
     baseRadius: 16.2, radiusPerLevel: 8.1,          // size keeps growing with every level
     showLevel: false,                             // level number on minions of level 2+
+    colliderScale: 0.9,                           // collider circle = drawn body × this (legs and shadow not included)
     colors: ['#7bd389', '#f2a65a', '#6ec6ff', '#c792ea', '#ff6b6b', '#ffd93d', '#ffffff', '#a0e7e5'],
   },
 
@@ -45,7 +46,7 @@ const CONFIG = {
     baseCount: 6, countPerZone: 2,
     hpMultPerZone: 1.35,            // HP × this for each zone after
     valueMultPerZone: 1.3,          // wood × this for each zone after
-    colliderScale: 1,               // collider circle diameter = resource size × this
+    colliderScale: 0.75,            // collider circle diameter = resource size × this
   },
 
   // Resource types. Each spawned resource picks a type at random, in
@@ -181,7 +182,7 @@ const CONFIG = {
 
   clearDelay: 1.2,          // seconds between zones
   showLeader: false,        // debug: draw the invisible leader
-  showColliders: false,     // debug: draw resource collider circles
+  showColliders: true,      // debug: draw collider circles (resources cyan, minions pink)
 };
 
 // Explanations shown when tapping a setting's name in the ⚙ panel.
@@ -196,6 +197,7 @@ const CONFIG_HELP = {
   'minion.baseRadius': 'Size (radius in pixels) of a level 1 minion.',
   'minion.radiusPerLevel': 'Pixels added to the size at each level. Bigger minions take more room around a resource.',
   'minion.showLevel': 'Show the level number on minions of level 2 and up.',
+  'minion.colliderScale': 'Size of the round collider minions push and bite with, compared to their body as drawn (Scale in 🎨 included). 0.9 = 10% smaller than the body. Legs and shadow are never part of it. Check it with showColliders.',
   'minion.colors': 'Color of each level: first = level 1, second = level 2, and so on. Repeats after the last one.',
   mergeHighestFirst: 'Off: the Merge button combines the lowest-level pair first. On: it combines the highest-level pair first.',
   hireBaseCost: 'Wood price of the first minion you hire.',
@@ -271,17 +273,19 @@ const CONFIG_HELP = {
   'damagePopup.color': 'Color of damage numbers.',
   textWeight: 'Thickness of all game text (HUD, HP numbers, damage numbers). 400 = regular, 700 = bold, 900+ = extra thick. Fine steps (e.g. 850) need a variable font such as Nunito-VariableFont; a normal font only has its own weight.',
   clearDelay: 'Pause in seconds between clearing a zone and the next zone appearing.',
-  'zone.colliderScale': 'Size of the round collider minions bump into and hit, compared to the resource art. 1 = a circle touching the art\'s edges, 0.8 = smaller so minions overlap the art a bit, 1.2 = bigger.',
-  showColliders: 'Debug: draw each resource\'s collider circle in cyan, to check it against your art.',
+  'zone.colliderScale': 'Size of the round collider minions bump into and hit, compared to the resource art as drawn (Scale in 🎨 included). 1 = a circle touching the art\'s edges, 0.8 = smaller so minions overlap the art a bit, 1.2 = bigger.',
+  showColliders: 'Debug: draw collider circles to check them against your art: resources in cyan, minions in pink.',
   maxPixelRatio: 'How sharp the game draws. 2 = sharp on phones and computers (recommended). 1 = softer but lighter. 3 = full iPhone sharpness, more work for the phone. Applies when the page is resized or reloaded.',
   showLeader: 'Debug: show the invisible leader the swarm follows, as a small white circle.',
 };
 
 for (const key of Object.keys(CONFIG.artScale)) {
   CONFIG_HELP[`artScale.${key}`] = (key.startsWith('minion_lv')
-    ? `Drawing size of level ${key.slice(9)} minions, × normal: body, legs, shadow and eating frames together.`
-    : `Drawing size of the ${key} image, × its normal size.`) +
-    ' 1 = unchanged, 1.2 = 20% bigger. Not the collider. Same as the Scale slider in 🎨.';
+    ? `Drawing size of level ${key.slice(9)} minions, × normal: body, legs, shadow, eating frames and collider together.`
+    : key.startsWith('resource_')
+      ? `Drawing size of ${key}, × normal. Its collider grows and shrinks with it.`
+      : `Drawing size of the ${key} image, × its normal size.`) +
+    ' 1 = unchanged, 1.2 = 20% bigger. Same as the Scale slider in 🎨.';
 }
 
 // Help for every resource type (resources.res1 … res6), same text for each.
@@ -353,10 +357,9 @@ function statsFor(level) {
 
 // ---- Geometry helpers ------------------------------------------------------
 
-// Resources collide as a circle that fits inside the art (diameter = size),
-// scaled by zone.colliderScale. Works for round art and is a close enough
-// fit for square art.
-const resRadius = (r) => (r.size / 2) * CONFIG.zone.colliderScale;
+// Resources collide as a circle that fits inside the art as drawn
+// (diameter = size × its Scale in 🎨), scaled by zone.colliderScale.
+const resRadius = (r) => (r.size / 2) * artScale(resourceArtKey(r.type)) * CONFIG.zone.colliderScale;
 
 // Closest point of the resource's collider circle (the point itself when inside).
 function closestPoint(r, px, py) {
@@ -396,19 +399,20 @@ function makeZone(index) {
   for (let i = 0; i < count && total > 0; i++) {
     const { key: type, t } = pickType();
     const size = t.size;
+    const space = size * artScale(resourceArtKey(type)); // room it takes as drawn
     let x, y, ok = false;
     // Keep resources apart so minions can walk between them.
     for (let tries = 0; tries < 40 && !ok; tries++) {
-      x = 20 + size / 2 + Math.random() * (W - 40 - size);
-      y = 80 + size / 2 + Math.random() * (H - 200 - size);
+      x = 20 + space / 2 + Math.random() * (W - 40 - space);
+      y = 80 + space / 2 + Math.random() * (H - 200 - space);
       ok = list.every((r) =>
-        Math.abs(r.x - x) > (r.size + size) / 2 + 16 ||
-        Math.abs(r.y - y) > (r.size + size) / 2 + 16);
+        Math.abs(r.x - x) > (r.space + space) / 2 + 16 ||
+        Math.abs(r.y - y) > (r.space + space) / 2 + 16);
     }
     if (!ok) continue;
     const maxHp = Math.max(1, Math.round(t.hp * Math.pow(z.hpMultPerZone, index)));
     list.push({
-      x, y, size, type, maxHp, hp: maxHp,
+      x, y, size, space, type, maxHp, hp: maxHp,
       value: Math.max(1, Math.round(t.value * Math.pow(z.valueMultPerZone, index))),
       done: false,
       shake: 0,
@@ -504,7 +508,7 @@ function updateMinion(m, dt, attackers) {
   let gx, gy, stop;
   if (m.target) {
     const c = closestPoint(m.target, m.x, m.y);
-    gx = c.x; gy = c.y; stop = t.radius;
+    gx = c.x; gy = c.y; stop = minionRadius(m);
   } else {
     gx = L.x + m.ox; gy = L.y + m.oy; stop = 2;
   }
@@ -528,7 +532,7 @@ function updateMinion(m, dt, attackers) {
   // Squash & stretch while moving, never while hitting.
   const b = CONFIG.bounce;
   const speedNow = Math.hypot(m.vx, m.vy);
-  m.attacking = !!m.target && distToResource(m.target, m.x, m.y) <= t.radius + 3;
+  m.attacking = !!m.target && distToResource(m.target, m.x, m.y) <= minionRadius(m) + 3;
 
   // Facing: 1 = right, -1 = left. Turn only on clear sideways movement.
   const f = CONFIG.facing;
@@ -572,12 +576,13 @@ function resolveCollisions() {
         let dx = b.x - a.x;
         let dy = b.y - a.y;
         let d = Math.hypot(dx, dy);
-        const min = a.type.radius + b.type.radius;
+        const ra = minionRadius(a), rb = minionRadius(b);
+        const min = ra + rb;
         if (d >= min) continue;
         if (d === 0) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d = Math.hypot(dx, dy); }
         const over = min - d;
-        const ma = a.type.radius ** 2;
-        const mb = b.type.radius ** 2;
+        const ma = ra ** 2;
+        const mb = rb ** 2;
         const nx = dx / d;
         const ny = dy / d;
         a.x -= nx * over * (mb / (ma + mb));
@@ -588,7 +593,7 @@ function resolveCollisions() {
     }
 
     for (const m of ms) {
-      const rad = m.type.radius;
+      const rad = minionRadius(m);
       for (const r of state.resources) {
         if (r.done) continue;
         // Circle vs circle: push the minion out of the resource's collider.
@@ -1057,8 +1062,10 @@ const ASSETS = [
 
 const art = (key) => (window.AssetPanel ? AssetPanel.image(key) : null);
 const artScale = (key) => (key in CONFIG.artScale ? Math.max(0, CONFIG.artScale[key]) : 1);
-// How big a minion is drawn: its size × its level's Scale. The collider keeps m.type.radius.
+// How big a minion is drawn: its size × its level's Scale.
 const minionDrawRadius = (m) => m.type.radius * artScale(minionArtKey(m.level));
+// Minion collider: the round body as drawn × minion.colliderScale (legs and shadow stay outside it).
+const minionRadius = (m) => minionDrawRadius(m) * CONFIG.minion.colliderScale;
 
 // ---- Render ----------------------------------------------------------------
 
@@ -1080,7 +1087,7 @@ function draw() {
     const y = r.y + sy;
     const artKey = resourceArtKey(r.type);
     const img = art(artKey);
-    const hs = h * artScale(artKey); // drawn half-size; the collider keeps r.size
+    const hs = h * artScale(artKey); // drawn half-size (the collider follows it, see resRadius)
     if (img) {
       // Sprite sheet: one row of square frames, frame 1 = untouched, last = almost eaten.
       // With 4 frames: HP 100–76% → 1, 75–51% → 2, 50–26% → 3, 25–0% → 4.
@@ -1213,6 +1220,12 @@ function draw() {
     for (const r of state.resources) {
       ctx.beginPath();
       ctx.arc(r.x, r.y, resRadius(r), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = '#ff4fd8';
+    for (const m of state.minions) {
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, minionRadius(m), 0, Math.PI * 2);
       ctx.stroke();
     }
   }
