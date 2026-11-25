@@ -6,7 +6,7 @@
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 37;
+const BUILD = 38;
 
 // ---- Tunable values (all in one place) ------------------------------------
 
@@ -219,6 +219,7 @@ const CONFIG = {
   cheat: {
     size: 50,              // invisible square in the top-left corner (px)
     doubleTapTime: 0.4,     // max seconds between the 2 taps
+    juiceAmount: 1000000,   // juice added by the cheat button
   },
 };
 
@@ -338,6 +339,7 @@ const CONFIG_HELP = {
   'loading.maxWait': 'Seconds before the game starts anyway if the art is still loading (missing art then shows as drawn shapes).',
   'cheat.size': 'Size of the invisible top-left square. Double-tap it to show or hide ⚙, 🎨 and the build number.',
   'cheat.doubleTapTime': 'Max seconds between the 2 taps on the cheat square.',
+  'cheat.juiceAmount': 'Juice added each time you tap the cheat button (+1M juice, at the top of ⚙).',
   'ui.pressScale': 'Button size for a moment after a tap. 0.92 = shrinks 8%, 1 = no bounce.',
   maxPixelRatio: 'How sharp the game draws. 2 = sharp on phones and computers (recommended). 1 = softer but lighter. 3 = full iPhone sharpness, more work for the phone. Applies when the page is resized or reloaded.',
   showLeader: 'Debug: show the invisible leader the swarm follows, as a small white circle.',
@@ -884,8 +886,7 @@ function toCanvas(e) {
   };
 }
 
-let lastCheatTap = 0;
-// Tap only: each tap replaces any previous move. Holding or dragging does nothing extra.
+let lastCheatTap = 0;// Tap only: each tap replaces any previous move. Holding or dragging does nothing extra.
 canvas.addEventListener('pointerdown', (e) => {
   e.preventDefault();
   const p = toCanvas(e);
@@ -1597,6 +1598,20 @@ if (window.SettingsPanel) {
     mount: canvas.parentElement,
     onRestart: restart,
     onToggle: (open) => { state.paused = open; },
+    // Cheat buttons at the top of the ⚙ list.
+    actions: [
+      { label: '+1M juice', onClick: () => { state.wood += CONFIG.cheat.juiceAmount; } },
+      {
+        label: 'Add minions',
+        fields: [
+          { key: 'level', label: 'Lv', value: 1, min: 1, max: 50 },
+          { key: 'count', label: 'x', value: 1, min: 1, max: 200 },
+        ],
+        onClick: ({ level, count }) => { for (let i = 0; i < count; i++) state.minions.push(spawnNearLeader(level)); },
+      },
+    ],
+    // Groups kept out of the ⚙ list to keep it short (still editable in CONFIG here).
+    hide: ['cheat', 'loading'],
   });
 }
 
