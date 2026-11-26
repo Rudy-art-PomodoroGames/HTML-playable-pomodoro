@@ -1,14 +1,15 @@
 // Connect & Earn — core gameplay prototype.
-// A Flow Free-style board inside an incremental idle. Drag a line from a
-// generator to the main generator in the middle: once connected, the
-// generator earns coins every tick. Lines can't cross, unless you spend a
+// A Flow Free-style board inside an incremental idle. The main generator in
+// the middle has one colored port per generator (jelly pot), usually on the
+// side away from its pot. Drag a line from a pot to its port, or from the port
+// to its pot: once connected, the pot earns coins every tick. Lines can't cross, unless you spend a
 // bridge (the line jumps over the other one). Buy gates to wake up the other
 // generators, level generators up, and route lines through ×2 booster tiles.
 // When every generator is connected, the next board opens.
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 1;
+const BUILD = 2;
 
 // ---- Tunable values (all in one place) ------------------------------------
 
@@ -52,8 +53,15 @@ const CONFIG = {
     costBoardMult: 12,      // bridge prices × this on each next board
   },
 
+  port: {
+    radius: 0.24,           // port dot size on the main generator, × tile size
+    outline: 3,             // dark edge around the port dot
+    lockedOpacity: 0.55,    // locked port dot see-through amount (1 = solid)
+    hitRadius: 0.5,         // how close to a port a tap counts, × tile size
+  },
+
   pipe: {
-    width: 16,              // line thickness in pixels
+    width: 16,             // line thickness in pixels
     outline: 3,             // darker edge around the line
     highlight: 0.35,        // light stripe on top of the pipe (0 = none)
     jumpScale: 1.3,         // a line jumping over another (bridge) is drawn this much thicker
@@ -132,7 +140,7 @@ const CONFIG_HELP = {
   'income.tickSeconds': 'Coins are paid every this many seconds.',
   'income.boosterMult': 'Income × this for each booster tile a generator\'s line goes through. 2 = ×2, two boosters = ×4.',
   'income.boardMult': 'Income × this on each new board.',
-  gatePrices: 'Price of the gate of generator 1, 2, 3… on board 1. 0 = free, already open. Applies on Restart or from the next board.',
+  gatePrices: 'Price to unlock the port of generator 1, 2, 3… on board 1 (tap the padlock or the pot). 0 = free, already open. Applies on Restart or from the next board.',
   gatePriceBoardMult: 'Gate prices × this on each new board.',
   'upgrade.levelMult': 'Generator income × this for each level. Tap a connected generator to level it up.',
   'upgrade.costSeconds': 'Level-up price = this many ticks of the generator\'s current income.',
@@ -141,6 +149,10 @@ const CONFIG_HELP = {
   'bridge.baseCost': 'Price of the first bridge on board 1.',
   'bridge.costMultPerBuy': 'Each bridge bought on a board costs this much more than the previous one.',
   'bridge.costBoardMult': 'Bridge prices × this on each new board.',
+  'port.radius': 'Size of the colored port dots on the main generator, × tile size.',
+  'port.outline': 'Thickness of the dark edge around the port dots, in pixels.',
+  'port.lockedOpacity': 'How visible a locked port dot is. 1 = solid.',
+  'port.hitRadius': 'How close to a port dot a tap or drag start counts, × tile size.',
   'pipe.width': 'Thickness of the lines, in pixels.',
   'pipe.outline': 'Thickness of the darker edge around the lines, in pixels.',
   'pipe.highlight': 'Strength of the light stripe on top of the pipes. 0 = flat.',
@@ -183,22 +195,27 @@ for (const key of Object.keys(CONFIG.artScale)) {
 // Hand-made layouts, played in order, then repeated (prices and income keep
 // growing with the board number). Coordinates are [column, row], from the top left.
 // main = top-left tile of the 2×2 main generator.
+// generators: [pot column, pot row, port column, port row]. The port is the tile
+// just outside the main generator where that pot's line plugs in (the dot is
+// drawn on the main generator's edge, facing that tile).
+// Ports sit away from their pots so lines wrap around the main generator.
+// Boards 1 and 2 are solvable without bridges; board 3 needs one bridge.
 
 const BOARDS = [
   {
     cols: 6, rows: 7, main: [2, 2],
-    generators: [[0, 0], [5, 0], [0, 6], [5, 5], [2, 6]],
-    boosters: [[1, 3], [4, 5]],
+    generators: [[0, 0, 4, 3], [5, 0, 3, 4], [0, 6, 3, 1], [5, 5, 2, 4], [2, 6, 1, 2]],
+    boosters: [[1, 4], [4, 5]],
   },
   {
     cols: 6, rows: 7, main: [2, 3],
-    generators: [[0, 1], [5, 1], [0, 6], [5, 6], [3, 0], [2, 6]],
-    boosters: [[1, 4], [4, 2], [3, 6]],
+    generators: [[0, 1, 3, 5], [5, 1, 2, 2], [0, 6, 4, 3], [5, 6, 3, 2], [3, 0, 1, 4]],
+    boosters: [[1, 1], [4, 2], [3, 6]],
   },
   {
-    cols: 6, rows: 7, main: [1, 2],
-    generators: [[5, 0], [0, 6], [5, 6], [0, 0], [3, 5], [5, 3]],
-    boosters: [[4, 2], [2, 5], [0, 3]],
+    cols: 6, rows: 7, main: [2, 3],
+    generators: [[0, 1, 3, 5], [5, 1, 1, 4], [0, 6, 4, 3], [5, 6, 3, 2], [3, 0, 2, 2]],
+    boosters: [[1, 1], [4, 5], [0, 4]],
   },
 ];
 
@@ -224,7 +241,7 @@ const state = {
   coins: 0,
   board: 0,                 // index of the current board (0 = board 1)
   layout: null,             // BOARDS entry in use
-  generators: [],           // { id, c, r, open, level, line: [{c, r}], connected, tickT }
+  generators: [],           // { id, c, r, port, portMain, open, level, line: [{c, r}], from, connected, tickT }
   bridgesBought: 0,         // bought on this board
   bridgesOwned: 0,
   drag: null,               // { gen, moved } while drawing a line
@@ -260,6 +277,26 @@ function cellAt(p) {
 function isMain(c, r) {
   const [mc, mr] = state.layout.main;
   return c >= mc && c <= mc + 1 && r >= mr && r <= mr + 1;
+}
+// The main generator tile next to a port tile.
+function mainNeighbor(c, r) {
+  for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (isMain(c + dc, r + dr)) return { c: c + dc, r: r + dr };
+  return { c, r };
+}
+// Port dot position: on the main generator's edge, facing the port tile.
+function portPos(g) {
+  const m = g.portMain;
+  const k = 0.5 - CONFIG.grid.gap / 2 / step();
+  return { x: cellCX(m.c) + (g.port.c - m.c) * step() * k, y: cellCY(m.r) + (g.port.r - m.r) * step() * k };
+}
+function portAt(p) {
+  const R = CONFIG.grid.cellSize * CONFIG.port.hitRadius;
+  let best = null, bd = R * R;
+  for (const g of state.generators) {
+    const q = portPos(g), d = (q.x - p.x) ** 2 + (q.y - p.y) ** 2;
+    if (d <= bd) { bd = d; best = g; }
+  }
+  return best;
 }
 const genAt = (c, r) => state.generators.find((g) => g.c === c && g.r === r);
 const isBooster = (c, r) => state.layout.boosters.some(([bc, br]) => bc === c && br === r);
@@ -324,8 +361,9 @@ function flash(text) { state.flash = text; state.flashT = 1.4; }
 function startBoard(index) {
   state.board = index;
   state.layout = BOARDS[index % BOARDS.length];
-  state.generators = state.layout.generators.map(([c, r], id) => ({
-    id, c, r, level: 1, line: [{ c, r }], connected: false, tickT: 0, open: false,
+  state.generators = state.layout.generators.map(([c, r, pc, pr], id) => ({
+    id, c, r, level: 1, line: [{ c, r }], from: 'pot', connected: false, tickT: 0, open: false,
+    port: { c: pc, r: pr }, portMain: mainNeighbor(pc, pr),
   }));
   for (const g of state.generators) g.open = gatePrice(g) <= 0;
   state.bridgesBought = 0;
@@ -357,8 +395,16 @@ function stepInto(g, c, r) {
     const prev = line[line.length - 2];
     if (c - last.c !== last.c - prev.c || r - last.r !== last.r - prev.r) return null;
   }
-  if (isMain(c, r)) return last.jump ? null : 'connect';
-  if (genAt(c, r)) return null;
+  if (g.from === 'port' && line.length === 1) {               // leaving the port: only onto its own tile
+    if (c !== g.port.c || r !== g.port.r) return null;
+  }
+  if (isMain(c, r)) {                                              // a pot's line plugs into its own port only
+    const ok = g.from === 'pot' && !last.jump && c === g.portMain.c && r === g.portMain.r
+      && last.c === g.port.c && last.r === g.port.r;
+    return ok ? 'connect' : null;
+  }
+  const pot = genAt(c, r);
+  if (pot) return g.from === 'port' && pot === g && !last.jump ? 'connect' : null;
   if (line.some((cell) => cell.c === c && cell.r === r)) return null;  // no loops
   const others = (occupancy().get(key(c, r)) || []).filter((o) => o.gen !== g);
   if (!others.length) return 'move';
@@ -377,10 +423,10 @@ function dragTo(cell) {
   if (!d || !cell) return;
   const g = d.gen;
   if (d.fresh) {
-    if (cell.c === g.c && cell.r === g.r) return;
+    if (d.from === 'port' ? isMain(cell.c, cell.r) : (cell.c === g.c && cell.r === g.r)) return;
     d.fresh = false;
     d.moved = true;
-    clearLine(g);
+    clearLine(g, d.from);
   }
   // Walk one tile at a time toward the finger, so fast swipes don't skip tiles.
   for (let guard = 0; guard < 20 && !g.connected; guard++) {
@@ -398,7 +444,7 @@ function dragTo(cell) {
       if (!res) continue;
       d.moved = true;
       if (res === 'back') g.line.pop();
-      else if (res === 'connect') { g.connected = true; g.end = { c: nc, r: nr }; flash('Connected!'); }
+      else if (res === 'connect') connect(g);
       else g.line.push({ c: nc, r: nr, jump: res === 'jump' });
       done = true;
       break;
@@ -417,10 +463,24 @@ function endDrag() {
   state.drag = null;
 }
 
-function clearLine(g) {
-  g.line = [{ c: g.c, r: g.r }];
+// from = 'pot' (line starts on the pot) or 'port' (starts in the main generator, at the port).
+function clearLine(g, from = 'pot') {
+  g.from = from;
+  g.line = [from === 'port' ? { c: g.portMain.c, r: g.portMain.r } : { c: g.c, r: g.r }];
   g.connected = false;
   g.end = null;
+}
+
+// Connected lines are always stored pot first, ending on the port tile.
+function connect(g) {
+  if (g.from === 'port') {
+    // The jump flag stays on the tile that was jumped over.
+    g.line = [{ c: g.c, r: g.r }, ...g.line.slice(1).reverse()];
+    g.from = 'pot';
+  }
+  g.connected = true;
+  g.end = { c: g.portMain.c, r: g.portMain.r };
+  flash('Connected!');
 }
 
 // ---- Actions -------------------------------------------------------------------
@@ -501,21 +561,29 @@ canvas.addEventListener('pointerdown', (e) => {
     if (btn === 'bridge') buyBridge(); else if (btn === 'next') nextBoard();
     return;
   }
+  // A port dot on the main generator: buy it when locked, else draw from it.
+  const pg = portAt(p);
+  if (pg) {
+    if (!pg.open) { tryOpenGate(pg); return; }
+    state.drag = { gen: pg, from: 'port', moved: false, fresh: true, tapUpgrade: false };
+    canvas.setPointerCapture(e.pointerId);
+    return;
+  }
   const cell = cellAt(p);
   if (!cell) return;
   const g = genAt(cell.c, cell.r);
   if (g) {
-    if (!g.open) { tryOpenGate(g); return; }
+    if (!g.open) { tryOpenGate(g); return; }  // its port is locked: tapping the pot buys it too
     // Tap a connected generator = level up. Drag from any open generator = redraw its line
     // (the old line is only cleared once the finger leaves the generator's tile).
-    state.drag = { gen: g, moved: false, fresh: true, tapUpgrade: g.connected };
+    state.drag = { gen: g, from: 'pot', moved: false, fresh: true, tapUpgrade: g.connected };
     canvas.setPointerCapture(e.pointerId);
     return;
   }
   // Continue an unfinished line from its end.
   const owner = state.generators.find((o) => o.open && !o.connected && o.line.length > 1
     && o.line[o.line.length - 1].c === cell.c && o.line[o.line.length - 1].r === cell.r);
-  if (owner) { state.drag = { gen: owner, moved: true }; canvas.setPointerCapture(e.pointerId); }
+  if (owner) { state.drag = { gen: owner, from: owner.from, moved: true }; canvas.setPointerCapture(e.pointerId); }
 });
 
 canvas.addEventListener('pointermove', (e) => {
@@ -728,6 +796,7 @@ const genColor = (g) => CONFIG.colors[g.id % CONFIG.colors.length];
 // Polyline of a generator's line, in pixels.
 function linePoints(g) {
   const pts = g.line.map((cell) => [cellCX(cell.c), cellCY(cell.r)]);
+  if (g.from === 'port') { const q = portPos(g); pts[0] = [q.x, q.y]; }
   if (g.connected && g.end) {
     const last = g.line[g.line.length - 1];
     pts.push([cellCX(last.c) + (g.end.c - last.c) * step() * 0.55, cellCY(last.r) + (g.end.r - last.r) * step() * 0.55]);
@@ -792,6 +861,9 @@ function draw() {
   const anyConnected = state.generators.some((g) => g.connected);
   drawArt('main_generator', mx, my, cs * 2, () => drawMainShape(ctx, mx, my, cs * 0.9, anyConnected));
 
+  // Ports on the main generator (locked ones show a padlock and their price)
+  for (const g of state.generators) drawPort(g);
+
   // Generators
   for (const g of state.generators) {
     const x = cellCX(g.c), y = cellCY(g.r);
@@ -806,8 +878,7 @@ function draw() {
     ctx.restore();
     const fs = CONFIG.ui.cellPriceFontSize;
     if (!g.open) {
-      drawArt('icon_lock', x, y - 4, cs * 0.5, () => drawLockShape(ctx, x, y - 4, cs * 0.5));
-      priceTag(x, cellY(g.r) + cs - fs * 0.5, gatePrice(g), state.coins >= gatePrice(g));
+      drawArt('icon_lock', x, y - 4, cs * 0.4, () => drawLockShape(ctx, x, y - 4, cs * 0.4));
     } else if (g.connected) {
       if (g.level > 1) outlinedText(`Lv${g.level}`, cellX(g.c) + 3, cellY(g.r) + 8, { size: fs, align: 'left', width: 2.5 });
       priceTag(x, cellY(g.r) + cs - fs * 0.5, upgradeCost(g), state.coins >= upgradeCost(g), '▲');
@@ -829,7 +900,7 @@ function draw() {
 
   // First-time hint until the first connection.
   if (!state.generators.some((g) => g.connected) && !state.drag && state.flashT <= 0) {
-    outlinedText('Drag from a generator to the big one!', W / 2, boardY() - 26, { size: 13, align: 'center', width: 3 });
+    outlinedText('Connect each pot to its color on the big one!', W / 2, boardY() - 26, { size: 13, align: 'center', width: 3 });
   }
   if (state.flashT > 0) {
     ctx.globalAlpha = Math.min(1, state.flashT * 2);
@@ -837,6 +908,25 @@ function draw() {
     ctx.globalAlpha = 1;
   }
   if (document.body.classList.contains('tools-on')) outlinedText(`build ${BUILD}`, W / 2, 54, { size: 9, align: 'center', width: 2 });
+}
+
+function drawPort(g) {
+  const P = CONFIG.port, cs = CONFIG.grid.cellSize;
+  const { x, y } = portPos(g);
+  const r = cs * P.radius;
+  ctx.save();
+  if (!g.open) ctx.globalAlpha = P.lockedOpacity;
+  ctx.fillStyle = CONFIG.ui.outlineColor; ctx.beginPath(); ctx.arc(x, y, r + P.outline, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = genColor(g); ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.beginPath(); ctx.ellipse(x - r * 0.3, y - r * 0.35, r * 0.35, r * 0.2, -0.5, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  if (!g.open) {
+    drawArt('icon_lock', x, y, r * 1.7, () => drawLockShape(ctx, x, y, r * 1.7));
+    // Price just outside the main generator, toward the port tile.
+    const fs = CONFIG.ui.cellPriceFontSize;
+    const dx = g.port.c - g.portMain.c, dy = g.port.r - g.portMain.r;
+    priceTag(x + dx * cs * 0.5, y + dy * cs * 0.5 + (dy ? 0 : r + fs * 0.6), gatePrice(g), state.coins >= gatePrice(g));
+  }
 }
 
 function priceTag(x, y, price, affordable, prefix = '') {
