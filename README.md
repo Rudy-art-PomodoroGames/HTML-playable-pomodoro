@@ -17,6 +17,7 @@ html-playable-pomodoro/
 | Game | Folder | Status |
 | --- | --- | --- |
 | Minion Swarm | `minion-swarm/` | Prototype: auto-harvest, zones, small/big merge |
+| Connect & Earn | `connect-and-earn/` | Prototype: draw lines to the main generator, gates, bridges, ×2 boosters |
 
 ## Checklist for each playable
 
