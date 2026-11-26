@@ -6,7 +6,7 @@
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 38;
+const BUILD = 39;
 
 // ---- Tunable values (all in one place) ------------------------------------
 
@@ -194,9 +194,9 @@ const CONFIG = {
   // the Scale slider on each row in 🎨. Only the picture changes, not colliders.
   artScale: {
     minion_lv1: 1, minion_lv2: 0.85, minion_lv3: 0.75, minion_lv4: 0.65,
-    minion_lv5: 0.7, minion_lv6: 1, minion_lv7: 1, minion_lv8: 1,
+    minion_lv5: 0.7, minion_lv6: 0.95, minion_lv7: 0.95, minion_lv8: 0.9,
     minion_eat: 1, minion_eat_lv2: 1, minion_eat_lv3: 1, minion_eat_lv4: 1,
-    minion_eat_lv5: 1, minion_eat_lv6: 1, minion_eat_lv7: 1, minion_eat_lv8: 1,
+    minion_eat_lv5: 1, minion_eat_lv6: 1.05, minion_eat_lv7: 1, minion_eat_lv8: 0.9,
     minion_leg: 1, minion_shadow: 1,
     resource_1: 1.4, resource_2: 1.25, resource_3: 2.25, resource_4: 1.7, resource_5: 2.2, resource_6: 1.6,
     splash_drop: 1, merge_vfx: 1, tap_marker: 1,
@@ -206,7 +206,7 @@ const CONFIG = {
 
   clearDelay: 1.2,          // seconds between zones
   showLeader: false,        // debug: draw the invisible leader
-  showColliders: false,     // debug: draw collider circles (resources cyan, minions pink)
+  showColliders: true,      // debug: draw collider circles (resources cyan, minions pink)
   loading: {
     text: 'Loading...',
     fontSize: 20,
