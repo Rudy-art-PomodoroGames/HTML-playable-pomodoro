@@ -15,7 +15,6 @@ game's built-in drawn shape (or the default font), so the game never breaks.
 | `hud_backdrop.webp` / `.png` | Backdrop behind the HUD counters, stretched, drawn see-through by `ui.backdropOpacity` | 256×64 |
 | `button_hire.webp` / `.png` | Hire button background (text is drawn on top) | ~340×124 |
 | `button_merge.webp` / `.png` | Merge button background (text is drawn on top) | ~340×124 |
-| `merge_vfx.webp` / `.png` | Merge effect, played once on the new minion: one row of square frames (frame count = width ÷ height) | e.g. 1536×256 for 6 frames |
 | `splash_drop.webp` / `.png` | One juice drop for the bite splash. Draw it white/grey: it's tinted with each resource's `splashColor` (turn off `splash.tintImage` to keep its own colors) | 32×32, transparent |
 | `tap_marker.webp` / `.png` | Marker shown where the player taps | 64×64, transparent |
 | `Nunito-VariableFont_wght.ttf` (or `font.woff2` / `.woff` / `.ttf` / `.otf`) | Font for all game text. A variable font lets 🎨 → Game font → Weight (same as ⚙ → textWeight) go from thin to extra thick | — |

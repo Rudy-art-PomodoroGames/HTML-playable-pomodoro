@@ -56,15 +56,9 @@
       border-radius: 14px; display: flex; flex-direction: column; overflow: hidden; }
     .sp-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; font-weight: 700; }
     .sp-body { overflow-y: auto; padding: 0 16px 8px; }
-    .sp-actions { display: flex; flex-direction: column; gap: 8px; padding: 10px 0; }
-    .sp-action { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-    .sp-action-go { flex: 1; min-width: 90px; padding: 10px; border: 0; border-radius: 8px; background: #e0a526; color: #1b1b1b;
-      font: 700 15px system-ui, sans-serif; cursor: pointer; }
-    .sp-field { display: flex; align-items: center; gap: 3px; font: 600 13px system-ui, sans-serif; }
-    .sp-field > span { margin-right: 2px; }
-    .sp-field button { width: 28px; height: 32px; padding: 0; border: 0; border-radius: 6px; background: rgba(255,255,255,0.15);
-      color: #fff; font-size: 12px; cursor: pointer; min-width: 0; }
-    .sp-field input { width: 40px; height: 32px; box-sizing: border-box; text-align: center; padding: 0 2px; }
+    .sp-search-wrap { padding: 0 16px 8px; }
+    .sp-search { width: 100%; box-sizing: border-box; font-size: 16px; padding: 8px 10px; border-radius: 8px;
+      border: 1px solid #3d5a43; background: #0f1a12; color: #e8f5ea; }
     .sp-group { margin: 12px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: #9fc3a6; }
     .sp-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 5px 0; font-size: 14px; }
     .sp-row.changed label { color: #f5e663; }
@@ -92,7 +86,7 @@
   `;
 
   // help: { 'path.to.value': 'what it does' }. Tapping a setting's name shows it.
-  function init({ config, storageKey, mount, onRestart, onToggle, help = {}, actions = [], hide = [] }) {
+  function init({ config, storageKey, mount, onRestart, onToggle, help = {}, hide = [] }) {
     const defaults = clone(config);
     assignIn(config, load(storageKey));
     // Lets other panels (e.g. 🎨 font weight) change a value and keep it saved.
@@ -113,6 +107,7 @@
     overlay.innerHTML = `
       <div class="sp-card" role="dialog" aria-label="Settings">
         <div class="sp-head"><span>Settings</span><button class="sp-close" aria-label="Close">✕</button></div>
+        <div class="sp-search-wrap"><input class="sp-search" type="search" placeholder="Search settings…" autocomplete="off"></div>
         <div class="sp-body"></div>
         <div class="sp-foot">
           <button class="sp-restart">Restart</button>
@@ -122,6 +117,23 @@
       </div>`;
     document.body.appendChild(overlay);
     const body = overlay.querySelector('.sp-body');
+
+    // Search: shows only the settings whose name contains every typed word.
+    const search = overlay.querySelector('.sp-search');
+    function applySearch() {
+      const words = search.value.toLowerCase().split(/\s+/).filter(Boolean);
+      const matches = (el) => words.every((w) => el.dataset.search.includes(w));
+      const groups = [...body.querySelectorAll('.sp-group')];
+      for (const row of body.querySelectorAll('.sp-row')) row.style.display = matches(row) ? '' : 'none';
+      for (const g of groups) {
+        const prefix = g.dataset.path + '.';
+        const any = [...body.querySelectorAll('.sp-row')].some((r) => r.style.display !== 'none' && r.dataset.path.startsWith(prefix));
+        g.style.display = any ? '' : 'none';
+      }
+      const hint = body.querySelector('.sp-hint');
+      if (hint) hint.style.display = words.length ? 'none' : '';
+    }
+    search.addEventListener('input', applySearch);
 
     // Help popup, shown on top of the panel when a setting's name is tapped.
     const tip = document.createElement('div');
@@ -146,6 +158,8 @@
       const value = obj[key];
       const row = document.createElement('div');
       row.className = 'sp-row';
+      row.dataset.path = path;
+      row.dataset.search = path.toLowerCase();
       const label = document.createElement('label');
       label.textContent = path;
       const text = helpFor(path);
@@ -199,6 +213,7 @@
           const h = document.createElement('div');
           h.className = 'sp-group';
           h.textContent = prefix ? `${prefix}.${key}` : key;
+          h.dataset.path = h.textContent;
           body.appendChild(h);
           walk(obj[key], def[key], prefix ? `${prefix}.${key}` : key);
         }
@@ -211,37 +226,6 @@
 
     function build() {
       body.innerHTML = '';
-      // Optional game buttons (e.g. cheats) at the very top of the list.
-      if (actions.length) {
-        const bar = document.createElement('div');
-        bar.className = 'sp-actions';
-        // An action can have number fields with ◀ ▶ arrows: { label, fields: [{ key, label, value, min, max }], onClick(values) }.
-        for (const a of actions) {
-          const line = document.createElement('div');
-          line.className = 'sp-action';
-          for (const f of a.fields || []) {
-            const clamp = (v) => Math.min(f.max ?? Infinity, Math.max(f.min ?? -Infinity, Math.round(v) || 0));
-            const wrap = document.createElement('span');
-            wrap.className = 'sp-field';
-            wrap.innerHTML = `<span>${f.label}</span><button>◀</button><input type="number" inputmode="numeric"><button>▶</button>`;
-            const [less, more] = wrap.querySelectorAll('button');
-            const input = wrap.querySelector('input');
-            const set = (v) => { f.value = clamp(v); input.value = f.value; };
-            set(f.value);
-            less.addEventListener('click', () => set(f.value - 1));
-            more.addEventListener('click', () => set(f.value + 1));
-            input.addEventListener('change', () => set(Number(input.value)));
-            line.appendChild(wrap);
-          }
-          const b = document.createElement('button');
-          b.className = 'sp-action-go';
-          b.textContent = a.label;
-          b.addEventListener('click', () => a.onClick(Object.fromEntries((a.fields || []).map((f) => [f.key, f.value]))));
-          line.appendChild(b);
-          bar.appendChild(line);
-        }
-        body.appendChild(bar);
-      }
       walk(config, defaults, '');
       const hint = document.createElement('p');
       hint.className = 'sp-hint';
@@ -249,6 +233,7 @@
       body.appendChild(hint);
       json.style.display = 'none';
       body.appendChild(json);
+      applySearch(); // keep the last search when the panel reopens
     }
 
     gear.addEventListener('click', () => { build(); setOpen(true); });

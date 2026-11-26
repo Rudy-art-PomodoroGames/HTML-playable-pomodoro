@@ -6,7 +6,7 @@
 
 // Build number, shown in the corner. Bump it together with the ?v= in
 // index.html on every push so phones load the new version.
-const BUILD = 40;
+const BUILD = 41;
 
 // ---- Tunable values (all in one place) ------------------------------------
 
@@ -147,14 +147,19 @@ const CONFIG = {
     tintImage: true,        // color your drop image with each resource's splashColor (draw it white/grey)
   },
 
-  // Effect played once on the new minion after a merge: the merge_vfx sprite
-  // sheet from 🎨 (one row of square frames, e.g. 6 frames). Without a sheet,
-  // a simple growing ring is drawn.
-  mergeVfx: {
-    show: true,
-    fps: 15,                // frames per second (6 frames at 15 = 0.4 s)
-    size: 2,                // × the new minion's width
-    followMinion: true,     // move with the minion while playing; off = stays where the merge happened
+  // Cloud explosion played on each merge.
+  cloudFx: {
+    inFront: false,         // on = drawn over the minions, off = behind them
+    scale: 2,               // size × the new minion's radius
+  },
+
+  // The new minion after a merge grows in with a bounce (the cloud plays behind it).
+  mergePop: {
+    startScale: 0,          // size it starts at (0 = nothing, 1 = full size)
+    duration: 0.4,          // seconds to reach full size
+    bounce: 3,              // overshoot: 0 = no bounce, 1.7 = goes ~10% bigger then settles
+    jumpHeight: 28,         // px the new minion hops up while it pops (its shadow stays on the ground)
+    jumpTime: 0.45,         // seconds from take-off to landing
   },
 
   damagePopup: {
@@ -199,7 +204,7 @@ const CONFIG = {
     minion_eat_lv5: 1, minion_eat_lv6: 1.05, minion_eat_lv7: 1, minion_eat_lv8: 0.9,
     minion_leg: 1, minion_shadow: 1,
     resource_1: 1.4, resource_2: 1.25, resource_3: 2.25, resource_4: 1.7, resource_5: 2.2, resource_6: 1.6,
-    splash_drop: 1, merge_vfx: 1, tap_marker: 1,
+    splash_drop: 1, tap_marker: 1,
   },
 
   textWeight: 1000,         // thickness of all game text: 400 = regular, 700 = bold, up to 1000 (needs a variable font)
@@ -286,10 +291,13 @@ const CONFIG_HELP = {
   'shake.amount': 'How strongly a resource shakes after a hit, in pixels.',
   'hpText.show': 'Show the remaining HP number in the middle of each resource.',
   'hpText.color': 'Color of the HP number.',
-  'mergeVfx.show': 'Play the merge effect on the new minion after a merge. Load the sprite sheet in 🎨 → Merge effect; without it, a simple ring is drawn.',
-  'mergeVfx.fps': 'Speed of the merge effect, in frames per second. 6 frames at 15 fps last 0.4 s. It plays once.',
-  'mergeVfx.size': 'Size of the merge effect compared to the new minion\'s width. 2 = twice as wide as the minion.',
-  'mergeVfx.followMinion': 'On: the effect moves with the new minion while it plays. Off: it stays where the merge happened.',
+  'mergePop.startScale': 'Size the new merged minion starts at before growing to full size. 0 = from nothing, 0.5 = from half size, 1 = no grow.',
+  'mergePop.duration': 'Seconds the new merged minion takes to grow to full size.',
+  'cloudFx.inFront': 'On: the merge cloud is drawn in front of the minions. Off: behind them.',
+  'cloudFx.scale': 'Size of the merge cloud compared to the new minion. 1.3 = a bit bigger than the minion, 2 = twice as big.',
+  'mergePop.jumpHeight': 'How high (px) the new merged minion hops while it pops in. Its shadow stays on the ground. 0 = no hop.',
+  'mergePop.jumpTime': 'Seconds the hop takes, from take-off to landing.',
+  'mergePop.bounce':'Overshoot of the grow: 0 = no bounce, 1.7 = gets about 10% bigger then settles, 3 = big bounce.',
   'splash.show': 'Juice drops burst out every time a minion bites a resource.',
   'splash.count': 'Number of drops per bite.',
   'splash.countRandom': 'Randomness of the drop count. 0.3 = up to 30% more or fewer each bite.',
@@ -399,7 +407,7 @@ const state = {
   guide: null,              // { x, y } tapped point the swarm is heading to
   popups: [],               // floating damage numbers
   splashes: [],             // juice drops flying off eaten resources
-  mergeFx: [],              // merge effects playing on new minions
+  cloudFx: [],              // cloud explosions playing (merge)
   press: null,              // button just tapped { key, t }, for the press bounce
   paused: false,
   clearing: 0,
@@ -744,7 +752,7 @@ function update(dt) {
   if (state.flashT > 0) state.flashT -= dt;
   for (const r of state.resources) if (r.shake > 0) r.shake -= dt;
   updateSplashes(dt);
-  updateMergeFx(dt);
+  updateCloudFx(dt);
   for (const p of state.popups) p.age += dt;
   state.popups = state.popups.filter((p) => p.age < CONFIG.damagePopup.duration);
 
@@ -805,59 +813,113 @@ function merge() {
   const merged = spawn(a.level + 1, (a.x + b.x) / 2, (a.y + b.y) / 2);
   state.minions = state.minions.filter((m) => m !== a && m !== b);
   state.minions.push(merged);
-  if (CONFIG.mergeVfx.show) state.mergeFx.push({ m: merged, x: merged.x, y: merged.y, age: 0 });
+  merged.popT = 0; // grows in with a bounce (mergePop)
+  spawnCloudFx(merged.x, merged.y, minionDrawRadius(merged) * CONFIG.cloudFx.scale);
 }
 
-// ---- Merge VFX: a sprite sheet played once on the new minion ----------------
-
-// Frame count and size of the merge sheet (one row of square frames).
-function mergeSheet() {
-  const img = art('merge_vfx');
-  if (!img) return null;
-  const fh = img.naturalHeight;
-  const count = Math.max(1, Math.round(img.naturalWidth / fh));
-  return { img, count, fw: img.naturalWidth / count, fh };
+// Size of a freshly merged minion: from mergePop.startScale up to 1, overshooting
+// a little and settling (ease-out-back). 1 for every other minion.
+function popScale(m) {
+  const p = CONFIG.mergePop;
+  if (m.popT === undefined || p.duration <= 0 || m.popT >= p.duration) return 1;
+  const t = m.popT / p.duration - 1;
+  const c1 = Math.max(0, p.bounce);
+  const e = 1 + (c1 + 1) * t * t * t + c1 * t * t;
+  return Math.max(0, p.startScale + (1 - p.startScale) * e);
 }
 
-// How long one merge effect lasts: its frames at mergeVfx.fps, or a short
-// built-in burst when there's no sheet.
-function mergeFxLength() {
-  const s = mergeSheet();
-  return s ? s.count / Math.max(1, CONFIG.mergeVfx.fps) : 0.4;
+// Hop of a freshly merged minion: px above the ground (a parabola, 0 at take-off and landing).
+function popJump(m) {
+  const p = CONFIG.mergePop;
+  if (m.popT === undefined || p.jumpTime <= 0 || m.popT >= p.jumpTime) return 0;
+  const t = m.popT / p.jumpTime;
+  return p.jumpHeight * 4 * t * (1 - t);
 }
 
-function updateMergeFx(dt) {
-  const len = mergeFxLength();
-  for (const f of state.mergeFx) {
-    f.age += dt;
-    if (CONFIG.mergeVfx.followMinion && state.minions.includes(f.m)) { f.x = f.m.x; f.y = f.m.y; }
+// ---- Cloud explosion on merge (vector shapes, values fixed for now) ---------
+// A cartoon "poof": puffs burst out, swell, then shrink away, with a quick
+// white ring and a few flying specks. Outlined like the game text.
+const CLOUD_FX = { duration: 0.75, shade: '#c6d2d6', light: '#ffffff' };
+const cloudEase = (t) => 1 - Math.pow(1 - t, 3);
+const clamp01 = (t) => Math.max(0, Math.min(1, t));
+
+function spawnCloudFx(x, y, size) {
+  const puffs = [];
+  for (let i = 0; i < 9; i++) {
+    puffs.push({
+      a: (i / 9) * Math.PI * 2 + (Math.random() - 0.5) * 0.5,
+      dist: size * (0.55 + Math.random() * 0.35),
+      r: size * (0.26 + Math.random() * 0.14),
+      delay: Math.random() * 0.08,
+    });
   }
-  state.mergeFx = state.mergeFx.filter((f) => f.age < len);
+  const specks = [];
+  for (let i = 0; i < 7; i++) {
+    specks.push({ a: Math.random() * Math.PI * 2, dist: size * (1.1 + Math.random() * 0.5), r: size * (0.05 + Math.random() * 0.04) });
+  }
+  state.cloudFx.push({ x, y, size, age: 0, puffs, specks });
 }
 
-function drawMergeFx() {
-  const v = CONFIG.mergeVfx;
-  const sheet = mergeSheet();
-  for (const f of state.mergeFx) {
-    const size = minionDrawRadius(f.m) * 2 * v.size * artScale('merge_vfx'); // × the new minion's width
-    if (sheet) {
-      const i = Math.min(sheet.count - 1, Math.floor(f.age * v.fps));
-      ctx.drawImage(sheet.img, i * sheet.fw, 0, sheet.fw, sheet.fh, f.x - size / 2, f.y - size / 2, size, size);
-    } else {
-      // Built-in burst until you load a sheet: a ring that grows and fades.
-      const k = f.age / 0.4;
+function updateCloudFx(dt) {
+  for (const c of state.cloudFx) c.age += dt;
+  const popEnd = Math.max(CONFIG.mergePop.duration, CONFIG.mergePop.jumpTime);
+  for (const m of state.minions) if (m.popT !== undefined && m.popT < popEnd) m.popT += dt;
+  state.cloudFx = state.cloudFx.filter((c) => c.age < CLOUD_FX.duration);
+}
+
+function drawCloudFx() {
+  const outlineColor = CONFIG.ui.outlineColor;
+  for (const c of state.cloudFx) {
+    const k = clamp01(c.age / CLOUD_FX.duration);
+    // Center puff (big at first, shrinks fast) + the puffs flying out.
+    const shapes = [{ x: c.x, y: c.y - c.size * 0.1 * k, r: c.size * 0.5 * Math.max(0, 1 - cloudEase(clamp01(k / 0.6))) }];
+    for (const p of c.puffs) {
+      const t = clamp01((k - p.delay) / (1 - p.delay));
+      const move = cloudEase(clamp01(t / 0.55));
+      const grow = t < 0.2 ? 0.4 + 0.6 * cloudEase(t / 0.2) : 1 - Math.pow((t - 0.2) / 0.8, 2);
+      shapes.push({
+        x: c.x + Math.cos(p.a) * p.dist * move,
+        y: c.y + Math.sin(p.a) * p.dist * move * 0.8 - c.size * 0.25 * t,
+        r: Math.max(0, p.r * grow),
+      });
+    }
+    const live = shapes.filter((s) => s.r > 0.5);
+
+    if (k < 0.35) { // white ring
+      const rk = k / 0.35;
       ctx.save();
-      ctx.globalAlpha = 1 - k;
-      ctx.strokeStyle = '#fff6b0';
-      ctx.lineWidth = 4 * (1 - k) + 1;
+      ctx.globalAlpha = 1 - rk;
+      ctx.strokeStyle = CLOUD_FX.light;
+      ctx.lineWidth = c.size * 0.12 * (1 - rk) + 1;
       ctx.beginPath();
-      ctx.arc(f.x, f.y, (size / 2) * (0.4 + 0.6 * k), 0, Math.PI * 2);
+      ctx.arc(c.x, c.y, c.size * (0.3 + cloudEase(rk)), 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
     }
+
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = outlineColor;
+    ctx.fillStyle = CLOUD_FX.light;
+    for (const s of c.specks) { // specks
+      const r = s.r * (1 - k);
+      if (r < 0.4) continue;
+      const m = cloudEase(k);
+      ctx.beginPath();
+      ctx.arc(c.x + Math.cos(s.a) * s.dist * m, c.y + Math.sin(s.a) * s.dist * m - c.size * 0.3 * k, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    // Body in 3 passes so the puffs merge into one outlined cloud.
+    const outline = Math.max(1.5, c.size * 0.06);
+    ctx.fillStyle = outlineColor;
+    for (const s of live) { ctx.beginPath(); ctx.arc(s.x, s.y, s.r + outline, 0, Math.PI * 2); ctx.fill(); }
+    ctx.fillStyle = CLOUD_FX.shade;
+    for (const s of live) { ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill(); }
+    ctx.fillStyle = CLOUD_FX.light;
+    for (const s of live) { ctx.beginPath(); ctx.arc(s.x - s.r * 0.15, s.y - s.r * 0.2, s.r * 0.78, 0, Math.PI * 2); ctx.fill(); }
   }
 }
-
 
 function restart() {
   state.wood = 0;
@@ -868,7 +930,7 @@ function restart() {
   state.guide = null;
   state.popups = [];
   state.splashes = [];
-  state.mergeFx = [];
+  state.cloudFx = [];
   state.leader.x = W / 2;
   state.leader.y = H - 130;
   state.minions = [];
@@ -1155,11 +1217,6 @@ const ASSETS = [
     draw: (c, w, h) => drawButtonShape(c, 2, h * 0.3, w - 4, h * 0.38, CONFIG.ui.hireColor) },
   { key: 'button_merge', label: 'Merge button', size: '680×256 (stretched to the button; text is drawn on top, inside ui.buttonContent*)',
     draw: (c, w, h) => drawButtonShape(c, 2, h * 0.3, w - 4, h * 0.38, CONFIG.ui.mergeColor) },
-  { key: 'merge_vfx', label: 'Merge effect (sprite sheet)', size: 'one row of square frames, e.g. 6 × 256 = 1536×256; plays once on the new minion',
-    draw: (c, w, h) => {
-      c.strokeStyle = '#fff6b0'; c.lineWidth = 4;
-      c.beginPath(); c.arc(w / 2, h / 2, w * 0.35, 0, Math.PI * 2); c.stroke();
-    } },
   { key: 'splash_drop', label: 'Splash drop', size: '32×32, transparent, drawn white/grey (tinted per resource)',
     draw: (c, w, h) => { c.translate(w / 2, h / 2); drawDropShape(c, w * 0.35, '#ff8a3d'); } },
   { key: 'tap_marker', label: 'Tap marker', size: '64×64 (square, transparent)',
@@ -1209,6 +1266,8 @@ function draw() {
     r.drawY = y;
   }
 
+  if (!CONFIG.cloudFx.inFront) drawCloudFx(); // merge cloud behind the minions
+
   // Shadows first, so no minion's shadow covers another minion.
   const sh = CONFIG.shadow;
   if (sh.show && sh.opacity > 0) {
@@ -1216,7 +1275,7 @@ function draw() {
     ctx.save();
     ctx.globalAlpha = Math.min(1, sh.opacity);
     for (const m of state.minions) {
-      const rad = minionDrawRadius(m); // follows the level's Scale
+      const rad = minionDrawRadius(m) * popScale(m); // follows the level's Scale
       const rx = rad * sh.width * artScale('minion_shadow');
       const ry = rx * sh.flatness;
       const y = m.y + rad + rad * sh.offsetY;
@@ -1232,8 +1291,9 @@ function draw() {
     const eat = eatFrame(m);
     const img = eat ? null : art(minionArtKey(m.level));
     // The level's Scale (🎨) sizes the whole minion: body, legs, wobble, eating frames.
-    const rad = minionDrawRadius(m);
+    const rad = minionDrawRadius(m) * popScale(m); // × the merge pop-in
     ctx.save();
+    ctx.translate(0, -popJump(m)); // merge hop (the shadow stays down)
     // Wobble: tilt around the bottom center of the sprite.
     const w = CONFIG.wobble;
     if (w.show && m.bounceAmp > 0.001) {
@@ -1258,7 +1318,7 @@ function draw() {
   }
 
   drawSplashes();
-  drawMergeFx();
+  if (CONFIG.cloudFx.inFront) drawCloudFx(); // merge cloud in front of the minions
 
   // Overlays: HP bars, HP numbers and damage numbers always draw on top of
   // minions and resources.
@@ -1598,20 +1658,28 @@ if (window.SettingsPanel) {
     mount: canvas.parentElement,
     onRestart: restart,
     onToggle: (open) => { state.paused = open; },
-    // Cheat buttons at the top of the ⚙ list.
-    actions: [
+    // Groups kept out of the ⚙ list to keep it short (still editable in CONFIG here).
+    hide: ['cheat', 'loading'],
+  });
+}
+
+// Cheat panel (🕹): testing shortcuts.
+if (window.CheatPanel) {
+  CheatPanel.init({
+    mount: canvas.parentElement,
+    onToggle: (open) => { state.paused = open; },
+    cheats: [
       { label: '+1M juice', onClick: () => { state.wood += CONFIG.cheat.juiceAmount; } },
       {
         label: 'Add minions',
         fields: [
-          { key: 'level', label: 'Lv', value: 1, min: 1, max: 50 },
+          { key: 'level', label: 'Lv', value: 1, min: 1, max: MINION_ART_LEVELS }, // up to the highest minion level (8)
           { key: 'count', label: 'x', value: 1, min: 1, max: 200 },
         ],
         onClick: ({ level, count }) => { for (let i = 0; i < count; i++) state.minions.push(spawnNearLeader(level)); },
       },
+      { label: 'Clear all minions', onClick: () => { state.minions = []; state.cloudFx = []; } },
     ],
-    // Groups kept out of the ⚙ list to keep it short (still editable in CONFIG here).
-    hide: ['cheat', 'loading'],
   });
 }
 
